@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PipelineStage {
+  SOURCED
+  VETTED
+  INVITED
+  REPLIED
+  QUALIFIED
+  SAMPLE_SENT
+  BRIEF_SENT
+  CONTENT_LIVE
+  EVALUATED
+  EXPANDED
+  AMBASSADOR
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum InteractionType {
+  NOTE
+  EMAIL
+  DM
+  CALL
+  SAMPLE
+  CONTENT
+  INTERNAL
+}
+
+enum TemplateCategory {
+  OUTREACH
+  FOLLOW_UP
+  BRIEF
+  OFFER
+  RIGHTS
+  NURTURE
+}
+
+enum BriefStatus {
+  DRAFT
+  SENT
+  CONTENT_LIVE
+  REVIEWED
+}
+
+model Creator {
+  id                 String            @id @default(cuid())
+  name               String
+  handle             String
+  platform           String            @default("Instagram")
+  profileUrl         String?
+  email              String?
+  location           String?
+  niche              String?
+  source             String?
+  audienceSummary    String?
+  whyFit             String?
+  notes              String            @default("")
+  tags               String[]          @default([])
+  followers          Int?
+  engagementRate     Float?
+  estimatedReach     Int?
+  contentLiveUrl     String?
+  affiliateCode      String?
+  conversions        Int               @default(0)
+  revenueCents       Int               @default(0)
+  stage              PipelineStage     @default(SOURCED)
+  stageChangedAt     DateTime          @default(now())
+  priority           TaskPriority      @default(MEDIUM)
+  audienceFit        Int               @default(0)
+  contentQuality     Int               @default(0)
+  aestheticFit       Int               @default(0)
+  authorityTrust     Int               @default(0)
+  logisticsFit       Int               @default(0)
+  purchaseIntent     Int               @default(0)
+  overallScore       Float             @default(0)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  interactions       Interaction[]
+  tasks              Task[]
+  briefs             Brief[]
+  linkedTemplates    CreatorTemplate[]
+
+  @@index([stage])
+  @@index([updatedAt])
+  @@unique([platform, handle])
+}
+
+model Interaction {
+  id         String          @id @default(cuid())
+  creatorId String?
+  creator   Creator?        @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  type       InteractionType @default(NOTE)
+  channel    String?
+  title      String
+  body       String          @default("")
+  happenedAt DateTime        @default(now())
+  createdAt  DateTime        @default(now())
+
+  @@index([creatorId])
+  @@index([happenedAt])
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  creatorId     String?
+  creator       Creator?     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  title         String
+  details       String       @default("")
+  status        TaskStatus   @default(TODO)
+  priority      TaskPriority @default(MEDIUM)
+  dueDate       DateTime?
+  completedAt   DateTime?
+  automationKey String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([creatorId])
+  @@index([status, dueDate])
+}
+
+model Template {
+  id              String            @id @default(cuid())
+  name            String            @unique
+  category        TemplateCategory
+  subject         String?
+  body            String
+  notes           String            @default("")
+  variables       String[]          @default([])
+  isStarter       Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  linkedCreators  CreatorTemplate[]
+}
+
+model CreatorTemplate {
+  id         String   @id @default(cuid())
+  creatorId  String
+  templateId String
+  creator    Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([creatorId, templateId])
+}
+
+model Brief {
+  id         String      @id @default(cuid())
+  creatorId String?
+  creator   Creator?    @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+  title      String
+  body       String
+  status     BriefStatus @default(DRAFT)
+  dueDate    DateTime?
+  sentAt     DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([creatorId])
+}
+
+model AppSettings {
+  id                  String   @id @default("app")
+  brandName           String   @default("HAUS")
+  defaultTheme        String   @default("system")
+  memoryText          String   @default("")
+  brandVoice          String   @default("")
+  recruitmentCriteria String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
