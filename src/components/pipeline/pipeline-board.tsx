@@ -8,6 +8,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { CreatorIdentity, CreatorMetaBadges, creatorFitLine } from "@/components/creators/creator-identity";
 import { PIPELINE_STAGES } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 
@@ -15,10 +16,14 @@ type PipelineCreator = {
   id: string;
   name: string;
   handle: string;
+  platform: string;
   stage: (typeof PIPELINE_STAGES)[number]["value"];
   overallScore: number;
   niche?: string | null;
-  priority: string;
+  whyFit?: string | null;
+  audienceSummary?: string | null;
+  tags: string[];
+  priority: "LOW" | "MEDIUM" | "HIGH";
 };
 
 export function PipelineBoard({ creators }: { creators: PipelineCreator[] }) {
@@ -111,21 +116,17 @@ function PipelineCard({ creator }: { creator: PipelineCreator }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={cn("cursor-grab rounded-md shadow-sm active:cursor-grabbing", isDragging && "opacity-60")}
+      className={cn("cursor-grab rounded-lg shadow-sm transition-colors hover:bg-accent/25 active:cursor-grabbing", isDragging && "opacity-60")}
     >
       <CardContent className="p-3">
         <Link href={`/creators/${creator.id}`} className="block">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-medium">{creator.name}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{creator.handle}</div>
-            </div>
-            <div className="font-mono text-lg">{creator.overallScore.toFixed(1)}</div>
+          <CreatorIdentity creator={creator} compact />
+          <div className="mt-3">
+            <CreatorMetaBadges creator={creator} />
           </div>
-          <div className="mt-3 line-clamp-2 text-sm text-muted-foreground">{creator.niche ?? "No niche yet"}</div>
-          <Badge className="mt-3" variant={creator.priority === "HIGH" ? "default" : "secondary"}>
-            {creator.priority.toLowerCase()}
-          </Badge>
+          <div className="mt-3 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {creatorFitLine(creator)}
+          </div>
         </Link>
       </CardContent>
     </Card>

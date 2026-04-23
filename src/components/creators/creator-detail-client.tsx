@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, ExternalLink, Plus, Save } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Copy, ExternalLink, ListChecks, MessageSquareText, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CreatorAvatar,
+  CreatorMetaBadges,
+  PlatformLabel,
+  PriorityBadge,
+  ScorePill,
+  StageBadge,
+  creatorFitLine,
+} from "@/components/creators/creator-identity";
 import { PIPELINE_STAGES, SCORE_FIELDS, calculateOverallScore, evaluationSuggestion, formatMoney, stageLabel } from "@/lib/domain";
 
 type CreatorDetail = {
@@ -45,6 +54,8 @@ type CreatorDetail = {
   logisticsFit: number;
   purchaseIntent: number;
   overallScore: number;
+  updatedAt?: string | Date;
+  stageChangedAt?: string | Date;
   interactions: { id: string; type: string; title: string; body: string; happenedAt: string | Date }[];
   tasks: { id: string; title: string; details: string; status: string; dueDate?: string | Date | null; priority: string }[];
   briefs: { id: string; title: string; body: string; status: string; dueDate?: string | Date | null }[];
@@ -59,6 +70,85 @@ type TemplateRecord = {
   body: string;
 };
 
+type SaveState = "saved" | "saving" | "dirty" | "failed";
+
+type CreatorWritePayload = Pick<
+  CreatorDetail,
+  | "name"
+  | "handle"
+  | "platform"
+  | "profileUrl"
+  | "email"
+  | "location"
+  | "niche"
+  | "source"
+  | "audienceSummary"
+  | "whyFit"
+  | "notes"
+  | "tags"
+  | "followers"
+  | "engagementRate"
+  | "estimatedReach"
+  | "contentLiveUrl"
+  | "affiliateCode"
+  | "conversions"
+  | "revenueCents"
+  | "stage"
+  | "priority"
+  | "audienceFit"
+  | "contentQuality"
+  | "aestheticFit"
+  | "authorityTrust"
+  | "logisticsFit"
+  | "purchaseIntent"
+>;
+
+type CreatorWriteKey = keyof CreatorWritePayload;
+
+const CREATOR_WRITE_KEYS = new Set<keyof CreatorDetail>([
+  "name",
+  "handle",
+  "platform",
+  "profileUrl",
+  "email",
+  "location",
+  "niche",
+  "source",
+  "audienceSummary",
+  "whyFit",
+  "notes",
+  "tags",
+  "followers",
+  "engagementRate",
+  "estimatedReach",
+  "contentLiveUrl",
+  "affiliateCode",
+  "conversions",
+  "revenueCents",
+  "stage",
+  "priority",
+  "audienceFit",
+  "contentQuality",
+  "aestheticFit",
+  "authorityTrust",
+  "logisticsFit",
+  "purchaseIntent",
+]);
+
+const NULLABLE_TEXT_KEYS = new Set<CreatorWriteKey>([
+  "profileUrl",
+  "email",
+  "location",
+  "niche",
+  "source",
+  "audienceSummary",
+  "whyFit",
+  "contentLiveUrl",
+  "affiliateCode",
+]);
+
+const OPTIONAL_NUMBER_KEYS = new Set<CreatorWriteKey>(["followers", "engagementRate", "estimatedReach"]);
+
 export function CreatorDetailClient({
   initialCreator,
   templates,
@@ -68,9 +158,13 @@ export function CreatorDetailClient({
 }) {
   const router = useRouter();
   const [creator, setCreator] = useState(initialCreator);
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [autosaveNonce, setAutosaveNonce] = useState(0);
   const [isPending, startTransition] = useTransition();
   const dirtyRef = useRef(false);
+  const isSavingRef = useRef(false);
+  const pendingPatchRef = useRef<Partial<CreatorWritePayload>>({});
 
   const score = useMemo(
     () =>
@@ -85,67 +179,88 @@ export function CreatorDetailClient({
     [creator],
   );
   const suggestion = evaluationSuggestion(creator.stage, score);
+  const nextOpenTask = creator.tasks.find((task) => task.status !== "DONE");
+  const lastUpdated = creator.updatedAt ? new Date(creator.updatedAt).toLocaleDateString() : "Not saved yet";
+  const fitLine = creatorFitLine({ ...creator, overallScore: score });
 
   useEffect(() => {
-    if (!dirtyRef.current) {
+    if (!Object.keys(pendingPatchRef.current).length) {
       return;
     }
 
-    setSaveState("dirty");
     const timeout = window.setTimeout(async () => {
-      setSaveState("saving");
-      const response = await fetch(`/api/creators/${creator.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: creator.name,
-          handle: creator.handle,
-          platform: creator.platform,
-          profileUrl: creator.profileUrl,
-          email: creator.email,
-          location: creator.location,
-          niche: creator.niche,
-          source: creator.source,
-          audienceSummary: creator.audienceSummary,
-          whyFit: creator.whyFit,
-          notes: creator.notes,
-          tags: creator.tags,
-          followers: creator.followers,
-          engagementRate: creator.engagementRate,
-          estimatedReach: creator.estimatedReach,
-          contentLiveUrl: creator.contentLiveUrl,
-          affiliateCode: creator.affiliateCode,
-          conversions: creator.conversions,
-          revenueCents: creator.revenueCents,
-          stage: creator.stage,
-          priority: creator.priority,
-          audienceFit: creator.audienceFit,
-          contentQuality: creator.contentQuality,
-          aestheticFit: creator.aestheticFit,
-          authorityTrust: creator.authorityTrust,
-          logisticsFit: creator.logisticsFit,
-          purchaseIntent: creator.purchaseIntent,
-        }),
-      });
-
-      if (!response.ok) {
-        setSaveState("dirty");
-        toast.error("Autosave failed.");
+      if (isSavingRef.current) {
         return;
       }
 
-      const updated = await response.json();
-      setCreator((current) => ({ ...current, overallScore: updated.overallScore }));
-      setSaveState("saved");
-      dirtyRef.current = false;
-      router.refresh();
+      const patch = pendingPatchRef.current;
+      pendingPatchRef.current = {};
+      isSavingRef.current = true;
+      setSaveState("saving");
+      setSaveError(null);
+      let failed = false;
+
+      try {
+        const response = await fetch(`/api/creators/${creator.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        const result = await readJson(response);
+
+        if (!response.ok) {
+          throw new Error(getAutosaveError(result, response.status));
+        }
+
+        setCreator((current) => ({ ...current, overallScore: result?.overallScore ?? current.overallScore }));
+
+        if (result?.automationWarning) {
+          toast.message(result.automationWarning);
+        }
+      } catch (error) {
+        failed = true;
+        const reason = error instanceof Error ? error.message : "The update could not be saved.";
+        const hasQueuedChanges = Object.keys(pendingPatchRef.current).length > 0;
+        pendingPatchRef.current = { ...patch, ...pendingPatchRef.current };
+        setSaveError(reason);
+        toast.error(`Autosave failed: ${reason}`);
+        if (hasQueuedChanges) {
+          setSaveState("dirty");
+          setAutosaveNonce((current) => current + 1);
+        } else {
+          setSaveState("failed");
+        }
+      } finally {
+        isSavingRef.current = false;
+
+        if (!failed && Object.keys(pendingPatchRef.current).length) {
+          setSaveState("dirty");
+          setAutosaveNonce((current) => current + 1);
+          return;
+        }
+
+        if (!failed) {
+          setSaveState("saved");
+          dirtyRef.current = false;
+          router.refresh();
+        }
+      }
     }, 650);
 
     return () => window.clearTimeout(timeout);
-  }, [creator, router]);
+  }, [autosaveNonce, creator.id, router]);
 
   function update<K extends keyof CreatorDetail>(key: K, value: CreatorDetail[K]) {
     dirtyRef.current = true;
+    if (isCreatorWriteKey(key)) {
+      pendingPatchRef.current = {
+        ...pendingPatchRef.current,
+        [key]: normalizePatchValue(key, value as CreatorDetail[CreatorWriteKey]),
+      };
+    }
+    setSaveState("dirty");
+    setSaveError(null);
+    setAutosaveNonce((current) => current + 1);
     setCreator((current) => ({ ...current, [key]: value }));
   }
 
@@ -193,25 +308,49 @@ export function CreatorDetailClient({
         <Card className="haus-panel">
           <CardContent className="grid gap-5 p-5">
             <div className="flex items-start justify-between gap-6">
-              <div className="grid flex-1 gap-3">
-                <Input value={creator.name} onChange={(event) => update("name", event.target.value)} className="h-12 border-0 bg-transparent px-0 text-3xl font-semibold shadow-none focus-visible:ring-0" />
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Input value={creator.handle} onChange={(event) => update("handle", event.target.value)} className="h-8 w-44" />
-                  <Input value={creator.platform} onChange={(event) => update("platform", event.target.value)} className="h-8 w-36" />
-                  {creator.profileUrl ? (
-                    <a href={creator.profileUrl} target="_blank" className="flex items-center gap-1 hover:text-foreground">
-                      Profile <ExternalLink className="size-3" />
-                    </a>
-                  ) : null}
+              <div className="grid flex-1 gap-4">
+                <div className="flex items-start gap-4">
+                  <CreatorAvatar creator={creator} size="lg" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      Identity / summary
+                    </div>
+                    <Input value={creator.name} onChange={(event) => update("name", event.target.value)} className="mt-1 h-12 border-0 bg-transparent px-0 text-3xl font-semibold shadow-none focus-visible:ring-0" />
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                      <Input value={creator.handle} onChange={(event) => update("handle", event.target.value)} className="h-8 w-44" />
+                      <Input value={creator.platform} onChange={(event) => update("platform", event.target.value)} className="h-8 w-36" />
+                      {creator.platform ? <PlatformLabel platform={creator.platform} /> : null}
+                      {creator.profileUrl ? (
+                        <a href={creator.profileUrl} target="_blank" className="flex items-center gap-1 hover:text-foreground">
+                          Profile <ExternalLink className="size-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+                <CreatorMetaBadges creator={{ ...creator, overallScore: score }} />
+                <div className="rounded-lg border bg-background/50 p-3 text-sm leading-6 text-muted-foreground">
+                  <span className="font-medium text-foreground">At a glance:</span> {fitLine}
                 </div>
               </div>
               <div className="text-right">
                 <div className="font-mono text-5xl">{score.toFixed(1)}</div>
                 <div className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">overall</div>
-                <Badge className="mt-3" variant={saveState === "saved" ? "secondary" : "outline"}>
-                  {saveState === "saving" ? <Save className="size-3" /> : <Check className="size-3" />}
+                <Badge className="mt-3 capitalize" variant={saveState === "failed" ? "destructive" : saveState === "saved" ? "secondary" : "outline"}>
+                  {saveState === "failed" ? (
+                    <AlertCircle className="size-3" />
+                  ) : saveState === "saving" ? (
+                    <Save className="size-3" />
+                  ) : (
+                    <Check className="size-3" />
+                  )}
                   {saveState}
                 </Badge>
+                {saveError ? (
+                  <div className="mt-2 max-w-64 text-xs leading-5 text-destructive">
+                    Autosave failed: {saveError}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -227,11 +366,11 @@ export function CreatorDetailClient({
               <Field label="Source" value={creator.source ?? ""} onChange={(value) => update("source", value)} />
             </div>
             <div className="grid gap-2">
-              <Label>Audience summary</Label>
+              <Label>Why this creator fits</Label>
               <Textarea value={creator.audienceSummary ?? ""} onChange={(event) => update("audienceSummary", event.target.value)} className="min-h-24" />
             </div>
             <div className="grid gap-2">
-              <Label>Why fit</Label>
+              <Label>What happens next</Label>
               <Textarea value={creator.whyFit ?? ""} onChange={(event) => update("whyFit", event.target.value)} className="min-h-24" />
             </div>
           </CardContent>
@@ -241,14 +380,17 @@ export function CreatorDetailClient({
           <TabsList className="w-fit">
             <TabsTrigger value="notes">Notes</TabsTrigger>
             <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="interactions">Interactions</TabsTrigger>
+            <TabsTrigger value="interactions">Activity</TabsTrigger>
             <TabsTrigger value="briefs">Briefs</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <TabsContent value="notes">
             <Card className="haus-panel">
               <CardHeader>
-                <CardTitle>Working notes</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquareText className="size-4" />
+                  Working notes
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Textarea value={creator.notes} onChange={(event) => update("notes", event.target.value)} className="min-h-72 text-base leading-7" placeholder="Drop sourcing notes, objections, creative angles, and next moves here." />
@@ -258,7 +400,10 @@ export function CreatorDetailClient({
           <TabsContent value="tasks">
             <Card className="haus-panel">
               <CardHeader>
-                <CardTitle>Tasks</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <ListChecks className="size-4" />
+                  Next actions
+                </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4">
                 <form action={addTask} className="flex gap-2">
@@ -350,6 +495,33 @@ export function CreatorDetailClient({
 
       <aside className="grid h-fit gap-4">
         <Card className="haus-panel">
+          <CardHeader>
+            <CardTitle>Operator summary</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="flex flex-wrap gap-1.5">
+              <StageBadge stage={creator.stage} />
+              <PriorityBadge priority={creator.priority} />
+              <ScorePill score={score} />
+            </div>
+            <div className="grid gap-3 rounded-lg border bg-background/60 p-3">
+              <SummaryRow label="Current stage" value={stageLabel(creator.stage)} />
+              <SummaryRow label="Last updated" value={lastUpdated} />
+              <SummaryRow label="High-fit read" value={score >= 8 ? "Yes, worth momentum" : "Needs more signal"} />
+            </div>
+            <div className="rounded-lg border border-accent/40 bg-accent/20 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <ArrowRight className="size-4" />
+                What happens next
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {nextOpenTask?.title ?? creator.whyFit ?? "Add the next action so this record has a clear owner and direction."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="haus-panel">
           <CardHeader><CardTitle>Pipeline</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
             <Select value={creator.stage} onValueChange={(value) => value && update("stage", value as CreatorDetail["stage"])}>
@@ -408,6 +580,72 @@ export function CreatorDetailClient({
           </CardContent>
         </Card>
       </aside>
+    </div>
+  );
+}
+
+function isCreatorWriteKey(key: keyof CreatorDetail): key is CreatorWriteKey {
+  return CREATOR_WRITE_KEYS.has(key);
+}
+
+function normalizePatchValue(key: CreatorWriteKey, value: CreatorDetail[CreatorWriteKey]) {
+  if (NULLABLE_TEXT_KEYS.has(key)) {
+    if (typeof value !== "string") {
+      return value ?? null;
+    }
+
+    return value.trim() ? value.trim() : null;
+  }
+
+  if (OPTIONAL_NUMBER_KEYS.has(key)) {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? numberValue : null;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  return value;
+}
+
+async function readJson(response: Response) {
+  try {
+    return (await response.json()) as { error?: string; overallScore?: number; automationWarning?: string };
+  } catch {
+    return null;
+  }
+}
+
+function getAutosaveError(result: { error?: string } | null, status: number) {
+  if (result?.error) {
+    return result.error;
+  }
+
+  if (status === 409) {
+    return "Another creator already uses that platform and handle.";
+  }
+
+  if (status >= 500) {
+    return "Server error while saving. Check Vercel logs for the creator update route.";
+  }
+
+  return "The update could not be saved.";
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
     </div>
   );
 }

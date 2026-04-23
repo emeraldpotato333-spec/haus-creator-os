@@ -2,11 +2,12 @@ import Link from "next/link";
 import { isBefore, startOfDay } from "date-fns";
 import { ArrowRight, Clock, Sparkles, UsersRound } from "lucide-react";
 import { PageHeading } from "@/components/app/page-heading";
+import { CreatorAvatar, CreatorIdentity, CreatorMetaBadges, StageBadge, creatorFitLine } from "@/components/creators/creator-identity";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { getPrisma } from "@/lib/prisma";
-import { formatMoney, stageLabel } from "@/lib/domain";
+import { formatMoney } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
@@ -62,16 +63,24 @@ export default async function DashboardPage() {
               <Link
                 href={task.creator ? `/creators/${task.creator.id}` : "/tasks"}
                 key={task.id}
-                className="grid gap-1 rounded-md border bg-background/60 p-3 transition-colors hover:bg-accent/50"
+                className="grid gap-3 rounded-md border bg-background/60 p-3 transition-colors hover:bg-accent/40"
               >
-                <div className="flex items-center gap-2">
-                  <Badge variant={overdueTasks.includes(task) ? "destructive" : "secondary"}>
-                    {overdueTasks.includes(task) ? "Overdue" : "Due"}
-                  </Badge>
-                  <span className="font-medium">{task.title}</span>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  {task.creator?.name ?? "General"} {task.dueDate ? `· ${task.dueDate.toLocaleDateString()}` : ""}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    {task.creator ? <CreatorAvatar creator={task.creator} size="sm" /> : null}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={overdueTasks.includes(task) ? "destructive" : "secondary"}>
+                          {overdueTasks.includes(task) ? "Overdue" : "Due"}
+                        </Badge>
+                        <span className="font-medium">{task.title}</span>
+                      </div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {task.creator?.name ?? "General"} {task.dueDate ? `· ${task.dueDate.toLocaleDateString()}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  {task.creator ? <StageBadge stage={task.creator.stage} /> : null}
                 </div>
               </Link>
             ))}
@@ -95,15 +104,17 @@ export default async function DashboardPage() {
               <Link
                 key={creator.id}
                 href={`/creators/${creator.id}`}
-                className="grid gap-2 rounded-md px-2 py-3 transition-colors hover:bg-accent/40"
+                className="grid gap-3 rounded-md px-2 py-3 transition-colors hover:bg-accent/35"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-medium">{creator.name}</div>
-                    <div className="text-sm text-muted-foreground">{creator.handle}</div>
+                <div className="flex items-start justify-between gap-3">
+                  <CreatorIdentity creator={creator} compact />
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-lg">{creator.overallScore.toFixed(1)}</div>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">fit</div>
                   </div>
-                  <Badge variant="outline">{stageLabel(creator.stage)}</Badge>
                 </div>
+                <CreatorMetaBadges creator={creator} />
+                <p className="line-clamp-1 text-sm text-muted-foreground">{creatorFitLine(creator)}</p>
                 {index !== recent.length - 1 ? <Separator /> : null}
               </Link>
             ))}

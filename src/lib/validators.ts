@@ -4,10 +4,49 @@ import { calculateOverallScore } from "@/lib/domain";
 const nullableString = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .transform((value) => (value ? value : null));
 
 const optionalString = z.string().optional().default("");
+
+const updateNullableString = z
+  .string()
+  .trim()
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    return value ? value : null;
+  });
+
+const nullableInt = z.preprocess(
+  (value) => (value === "" ? null : value),
+  z.coerce.number().int().nonnegative().nullable().optional(),
+);
+
+const nullableNumber = z.preprocess(
+  (value) => (value === "" ? null : value),
+  z.coerce.number().nonnegative().nullable().optional(),
+);
+
+export const pipelineStageSchema = z.enum([
+  "SOURCED",
+  "VETTED",
+  "INVITED",
+  "REPLIED",
+  "QUALIFIED",
+  "SAMPLE_SENT",
+  "BRIEF_SENT",
+  "CONTENT_LIVE",
+  "EVALUATED",
+  "EXPANDED",
+  "AMBASSADOR",
+]);
+
+export const prioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
 export const creatorInputSchema = z.object({
   name: z.string().trim().min(1),
@@ -22,35 +61,51 @@ export const creatorInputSchema = z.object({
   whyFit: nullableString,
   notes: optionalString,
   tags: z.array(z.string()).default([]),
-  followers: z.coerce.number().int().nonnegative().nullable().optional(),
-  engagementRate: z.coerce.number().nonnegative().nullable().optional(),
-  estimatedReach: z.coerce.number().int().nonnegative().nullable().optional(),
+  followers: nullableInt,
+  engagementRate: nullableNumber,
+  estimatedReach: nullableInt,
   contentLiveUrl: nullableString,
   affiliateCode: nullableString,
   conversions: z.coerce.number().int().nonnegative().default(0),
   revenueCents: z.coerce.number().int().nonnegative().default(0),
-  stage: z
-    .enum([
-      "SOURCED",
-      "VETTED",
-      "INVITED",
-      "REPLIED",
-      "QUALIFIED",
-      "SAMPLE_SENT",
-      "BRIEF_SENT",
-      "CONTENT_LIVE",
-      "EVALUATED",
-      "EXPANDED",
-      "AMBASSADOR",
-    ])
-    .default("SOURCED"),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
+  stage: pipelineStageSchema.default("SOURCED"),
+  priority: prioritySchema.default("MEDIUM"),
   audienceFit: z.coerce.number().int().min(0).max(10).default(0),
   contentQuality: z.coerce.number().int().min(0).max(10).default(0),
   aestheticFit: z.coerce.number().int().min(0).max(10).default(0),
   authorityTrust: z.coerce.number().int().min(0).max(10).default(0),
   logisticsFit: z.coerce.number().int().min(0).max(10).default(0),
   purchaseIntent: z.coerce.number().int().min(0).max(10).default(0),
+});
+
+export const creatorUpdateSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  handle: z.string().trim().min(1).optional(),
+  platform: z.string().trim().min(1).optional(),
+  profileUrl: updateNullableString,
+  email: updateNullableString,
+  location: updateNullableString,
+  niche: updateNullableString,
+  source: updateNullableString,
+  audienceSummary: updateNullableString,
+  whyFit: updateNullableString,
+  notes: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  followers: nullableInt,
+  engagementRate: nullableNumber,
+  estimatedReach: nullableInt,
+  contentLiveUrl: updateNullableString,
+  affiliateCode: updateNullableString,
+  conversions: z.coerce.number().int().nonnegative().optional(),
+  revenueCents: z.coerce.number().int().nonnegative().optional(),
+  stage: pipelineStageSchema.optional(),
+  priority: prioritySchema.optional(),
+  audienceFit: z.coerce.number().int().min(0).max(10).optional(),
+  contentQuality: z.coerce.number().int().min(0).max(10).optional(),
+  aestheticFit: z.coerce.number().int().min(0).max(10).optional(),
+  authorityTrust: z.coerce.number().int().min(0).max(10).optional(),
+  logisticsFit: z.coerce.number().int().min(0).max(10).optional(),
+  purchaseIntent: z.coerce.number().int().min(0).max(10).optional(),
 });
 
 export function withOverallScore(data: z.infer<typeof creatorInputSchema>) {
