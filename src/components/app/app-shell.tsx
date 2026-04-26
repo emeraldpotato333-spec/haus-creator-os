@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   ListChecks,
+  Menu,
   PanelsTopLeft,
   Send,
   Settings,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { GlobalCommand } from "@/components/app/global-command";
 import { QuickAddCreator } from "@/components/app/quick-add-creator";
@@ -78,9 +80,46 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="md:pl-72">
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/82 px-5 backdrop-blur">
+          <Sheet>
+            <SheetTrigger render={<Button variant="outline" size="icon-sm" className="md:hidden" aria-label="Open navigation" />}>
+              <Menu />
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72 p-0">
+              <div className="flex h-full flex-col bg-sidebar px-4 py-5">
+                <Link href="/dashboard" className="flex items-center gap-3 px-2">
+                  <div className="grid size-9 place-items-center rounded-md border bg-background">
+                    <Archive className="size-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold tracking-[0.18em] uppercase">HAUS</div>
+                    <div className="text-xs text-muted-foreground">Creator OS</div>
+                  </div>
+                </Link>
+                <Separator className="my-5" />
+                <nav className="grid gap-1">
+                  {nav.map((item) => {
+                    const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          active && "bg-sidebar-accent text-sidebar-accent-foreground",
+                        )}
+                      >
+                        <item.icon className="size-4" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="outline"
-            className="h-9 min-w-72 justify-start gap-2 text-muted-foreground"
+            className="h-9 min-w-0 flex-1 justify-start gap-2 text-muted-foreground md:min-w-72 md:flex-none"
             onClick={() => setCommandOpen(true)}
           >
             <CommandIcon className="size-4" />

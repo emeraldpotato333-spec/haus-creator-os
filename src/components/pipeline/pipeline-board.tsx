@@ -5,10 +5,13 @@ import { useMemo, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useDraggable } from "@dnd-kit/core";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmActionDialog } from "@/components/app/confirm-action";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CreatorIdentity, CreatorMetaBadges, creatorFitLine } from "@/components/creators/creator-identity";
+import { CreatorAvatar, PriorityBadge, StageBadge } from "@/components/creators/creator-identity";
 import { PIPELINE_STAGES } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 
@@ -19,15 +22,16 @@ type PipelineCreator = {
   platform: string;
   stage: (typeof PIPELINE_STAGES)[number]["value"];
   overallScore: number;
+  profileImageUrl?: string | null;
   niche?: string | null;
-  whyFit?: string | null;
-  audienceSummary?: string | null;
+  nextAction?: string | null;
   tags: string[];
   priority: "LOW" | "MEDIUM" | "HIGH";
 };
 
 export function PipelineBoard({ creators }: { creators: PipelineCreator[] }) {
   const [items, setItems] = useState(creators);
+  const [deleteTarget, setDeleteTarget] = useState<PipelineCreator | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const byStage = useMemo(
@@ -67,18 +71,44 @@ export function PipelineBoard({ creators }: { creators: PipelineCreator[] }) {
     }
   }
 
+  async function deleteCreator() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    const response = await fetch(`/api/creators/${deleteTarget.id}`, { method: "DELETE" });
+
+    if (!response.ok) {
+      toast.error("Creator could not be deleted.");
+      return;
+    }
+
+    setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+    toast.success("Creator deleted.");
+  }
+
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-      <div className="grid auto-cols-[300px] grid-flow-col gap-4 overflow-x-auto pb-4">
-        {PIPELINE_STAGES.map((stage) => (
-          <PipelineColumn key={stage.value} id={stage.value} label={stage.label} count={byStage[stage.value].length}>
-            {byStage[stage.value].map((creator) => (
-              <PipelineCard key={creator.id} creator={creator} />
-            ))}
-          </PipelineColumn>
-        ))}
-      </div>
-    </DndContext>
+    <>
+      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        <div className="grid auto-cols-[300px] grid-flow-col gap-4 overflow-x-auto pb-4">
+          {PIPELINE_STAGES.map((stage) => (
+            <PipelineColumn key={stage.value} id={stage.value} label={stage.label} count={byStage[stage.value].length}>
+              {byStage[stage.value].map((creator) => (
+                <PipelineCard key={creator.id} creator={creator} onDelete={() => setDeleteTarget(creator)} />
+              ))}
+            </PipelineColumn>
+          ))}
+        </div>
+      </DndContext>
+      <ConfirmActionDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete ${deleteTarget?.name ?? "creator"}?`}
+        description="This removes the creator and related tasks from the workspace."
+        confirmLabel="Delete creator"
+        onConfirm={deleteCreator}
+      />
+    </>
   );
 }
 
@@ -106,7 +136,7 @@ function PipelineColumn({
   );
 }
 
-function PipelineCard({ creator }: { creator: PipelineCreator }) {
+function PipelineCard({ creator, onDelete }: { creator: PipelineCreator; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: creator.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
 
@@ -119,15 +149,47 @@ function PipelineCard({ creator }: { creator: PipelineCreator }) {
       className={cn("cursor-grab rounded-lg shadow-sm transition-colors hover:bg-accent/25 active:cursor-grabbing", isDragging && "opacity-60")}
     >
       <CardContent className="p-3">
-        <Link href={`/creators/${creator.id}`} className="block">
-          <CreatorIdentity creator={creator} compact />
-          <div className="mt-3">
-            <CreatorMetaBadges creator={creator} />
+        <div className="flex items-start justify-between gap-2">
+          <Link href={`/creators/${creator.id}`} className="block min-w-0 flex-1">
+            <div className="flex items-start gap-3">
+              <CreatorAvatar creator={creator} size="sm" />
+              <div className="min-w-0">
+                <div className="truncate font-medium">{creator.name}</div>
+                <div className="text-xs text-muted-foreground">{creator.handle}</div>
+              </div>
+            </div>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <StageBadge stage={creator.stage} />
+          <PriorityBadge priority={creator.priority} />
+          {creator.tags.slice(0, 2).map((tag) => (
+            <Badge key={tag} variant="secondary" className="bg-muted text-foreground">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <div className="line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {creator.nextAction || "Set the next action"}
           </div>
-          <div className="mt-3 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {creatorFitLine(creator)}
+          <div className="shrink-0 pl-3 text-right">
+            <div className="font-mono text-lg">{creator.overallScore.toFixed(1)}</div>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">fit</div>
           </div>
-        </Link>
+        </div>
       </CardContent>
     </Card>
   );

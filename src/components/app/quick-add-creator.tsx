@@ -37,9 +37,17 @@ export function QuickAddCreator() {
           handle: formData.get("handle"),
           platform: formData.get("platform") || "Instagram",
           profileUrl: formData.get("profileUrl"),
+          profileImageUrl: formData.get("profileImageUrl"),
           niche: formData.get("niche"),
           source: formData.get("source"),
-          whyFit: formData.get("whyFit"),
+          audienceSummary: formData.get("audienceSummary"),
+          nextAction: formData.get("nextAction"),
+          visualFitScore: Number(formData.get("visualFitScore") || 0),
+          commercialFitScore: Number(formData.get("commercialFitScore") || 0),
+          contentQuality: Number(formData.get("contentQuality") || 0),
+          trustPurchaseIntentScore: Number(formData.get("trustPurchaseIntentScore") || 0),
+          whyFit: formData.get("notes"),
+          notes: formData.get("notes"),
           tags,
         }),
       });
@@ -89,6 +97,10 @@ export function QuickAddCreator() {
               <Input name="profileUrl" placeholder="https://instagram.com/..." />
             </label>
             <label className="grid gap-2">
+              <Label>Profile image URL</Label>
+              <Input name="profileImageUrl" placeholder="https://..." />
+            </label>
+            <label className="grid gap-2">
               <Label>Niche</Label>
               <Input name="niche" placeholder="collected coastal interiors" />
             </label>
@@ -96,13 +108,43 @@ export function QuickAddCreator() {
               <Label>Source</Label>
               <Input name="source" placeholder="Instagram save folder" />
             </label>
+            <label className="grid gap-2">
+              <Label>Next action</Label>
+              <Input name="nextAction" placeholder="Send tailored outreach" />
+            </label>
+          </div>
+          <div className="grid grid-cols-4 gap-4">
+            <label className="grid gap-2">
+              <Label>Visual fit</Label>
+              <Input name="visualFitScore" type="number" min={0} max={10} defaultValue={0} />
+            </label>
+            <label className="grid gap-2">
+              <Label>Commercial fit</Label>
+              <Input name="commercialFitScore" type="number" min={0} max={10} defaultValue={0} />
+            </label>
+            <label className="grid gap-2">
+              <Label>Content quality</Label>
+              <Input name="contentQuality" type="number" min={0} max={10} defaultValue={0} />
+            </label>
+            <label className="grid gap-2">
+              <Label>Trust / intent</Label>
+              <Input name="trustPurchaseIntentScore" type="number" min={0} max={10} defaultValue={0} />
+            </label>
           </div>
           <label className="grid gap-2">
-            <Label>Why they fit</Label>
+            <Label>Audience notes</Label>
             <Textarea
-              name="whyFit"
+              name="audienceSummary"
               className="min-h-28"
-              placeholder="Strong natural light, material detail, and a premium renovation audience."
+              placeholder="Premium homeowners, remodelers, and design-curious buyers."
+            />
+          </label>
+          <label className="grid gap-2">
+            <Label>Notes</Label>
+            <Textarea
+              name="notes"
+              className="min-h-28"
+              placeholder="Why the fit is interesting, objections, context, or angle."
             />
           </label>
           <label className="grid gap-2">

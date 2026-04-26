@@ -15,12 +15,10 @@ export const PIPELINE_STAGES: { value: PipelineStage; label: string }[] = [
 ];
 
 export const SCORE_FIELDS = [
-  { key: "audienceFit", label: "Audience fit" },
+  { key: "visualFitScore", label: "Visual fit" },
+  { key: "commercialFitScore", label: "Commercial fit" },
   { key: "contentQuality", label: "Content quality" },
-  { key: "aestheticFit", label: "Aesthetic fit" },
-  { key: "authorityTrust", label: "Authority / trust" },
-  { key: "logisticsFit", label: "Logistics fit" },
-  { key: "purchaseIntent", label: "Purchase intent" },
+  { key: "trustPurchaseIntentScore", label: "Trust / purchase intent" },
 ] as const;
 
 export type ScoreField = (typeof SCORE_FIELDS)[number]["key"];
@@ -64,7 +62,11 @@ export function stageLabel(stage: PipelineStage) {
   return PIPELINE_STAGES.find((item) => item.value === stage)?.label ?? stage;
 }
 
-export function calculateOverallScore(scores: Record<ScoreField, number>) {
+export function calculateOverallScore(scores: Record<ScoreField, number>, override?: number | null) {
+  if (typeof override === "number" && Number.isFinite(override)) {
+    return Math.round(override * 10) / 10;
+  }
+
   const total = SCORE_FIELDS.reduce((sum, field) => sum + Number(scores[field.key] || 0), 0);
   return Math.round((total / SCORE_FIELDS.length) * 10) / 10;
 }

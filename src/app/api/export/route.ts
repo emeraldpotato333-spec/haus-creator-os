@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unparse } from "papaparse";
+import Papa from "papaparse";
 import { getPrisma } from "@/lib/prisma";
 import { stageLabel } from "@/lib/domain";
 
@@ -9,18 +9,23 @@ export async function GET(request: NextRequest) {
 
   if (type === "creators-csv") {
     const creators = await prisma.creator.findMany({ orderBy: { updatedAt: "desc" } });
-    const csv = unparse(
+    const csv = Papa.unparse(
       creators.map((creator) => ({
         name: creator.name,
         handle: creator.handle,
         platform: creator.platform,
         stage: stageLabel(creator.stage),
+        priority: creator.priority,
         niche: creator.niche,
-        followers: creator.followers,
-        engagementRate: creator.engagementRate,
+        nextAction: creator.nextAction,
+        visualFitScore: creator.visualFitScore,
+        commercialFitScore: creator.commercialFitScore,
+        contentQuality: creator.contentQuality,
+        trustPurchaseIntentScore: creator.trustPurchaseIntentScore,
         overallScore: creator.overallScore,
-        email: creator.email,
-        profileUrl: creator.profileUrl,
+        audienceSummary: creator.audienceSummary,
+        notes: creator.notes,
+        profileImageUrl: creator.profileImageUrl,
         tags: creator.tags.join("; "),
       })),
     );
@@ -38,7 +43,7 @@ export async function GET(request: NextRequest) {
       include: { creator: true },
       orderBy: [{ status: "asc" }, { dueDate: "asc" }],
     });
-    const csv = unparse(
+    const csv = Papa.unparse(
       tasks.map((task) => ({
         title: task.title,
         status: task.status,

@@ -12,7 +12,7 @@ export default async function TasksPage() {
       include: { creator: true },
       orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
     }),
-    prisma.creator.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.creator.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, handle: true } }),
   ]);
 
   return (

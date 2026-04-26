@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       where: { id },
       data: {
         ...updateData,
-        overallScore: calculateOverallScore(scoreValues),
+        overallScore: calculateOverallScore(scoreValues, parsed.overallScoreOverride ?? existing.overallScoreOverride),
         ...(parsed.stage && parsed.stage !== existing.stage
           ? { stageChangedAt: new Date() }
           : {}),
@@ -146,6 +146,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   return NextResponse.json({ ...creator, automationWarning });
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const { id } = await context.params;
+  const prisma = getPrisma();
+
+  const creator = await prisma.creator.findUnique({ where: { id }, select: { id: true } });
+
+  if (!creator) {
+    return NextResponse.json({ error: "Creator not found" }, { status: 404 });
+  }
+
+  await prisma.creator.delete({ where: { id } });
+
+  return NextResponse.json({ ok: true, id });
 }
 
 function stripUndefined<T extends Record<string, unknown>>(value: T) {

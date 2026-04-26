@@ -63,6 +63,10 @@ export function SettingsEditor({
       return;
     }
 
+    if (!window.confirm("Importing JSON replaces the current workspace data. Continue?")) {
+      return;
+    }
+
     startTransition(async () => {
       const text = await file.text();
       const response = await fetch("/api/import", {

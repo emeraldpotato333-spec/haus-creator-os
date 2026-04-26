@@ -32,6 +32,24 @@ const nullableNumber = z.preprocess(
   z.coerce.number().nonnegative().nullable().optional(),
 );
 
+const nullableDate = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => (value ? new Date(value) : null));
+
+const updateNullableDate = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    return value ? new Date(value) : null;
+  });
+
 export const pipelineStageSchema = z.enum([
   "SOURCED",
   "VETTED",
@@ -53,12 +71,14 @@ export const creatorInputSchema = z.object({
   handle: z.string().trim().min(1),
   platform: z.string().trim().min(1).default("Instagram"),
   profileUrl: nullableString,
+  profileImageUrl: nullableString,
   email: nullableString,
   location: nullableString,
   niche: nullableString,
   source: nullableString,
   audienceSummary: nullableString,
   whyFit: nullableString,
+  nextAction: nullableString,
   notes: optionalString,
   tags: z.array(z.string()).default([]),
   followers: nullableInt,
@@ -69,13 +89,14 @@ export const creatorInputSchema = z.object({
   conversions: z.coerce.number().int().nonnegative().default(0),
   revenueCents: z.coerce.number().int().nonnegative().default(0),
   stage: pipelineStageSchema.default("SOURCED"),
+  lastContactedAt: nullableDate,
+  nextFollowUpAt: nullableDate,
   priority: prioritySchema.default("MEDIUM"),
-  audienceFit: z.coerce.number().int().min(0).max(10).default(0),
+  visualFitScore: z.coerce.number().int().min(0).max(10).default(0),
+  commercialFitScore: z.coerce.number().int().min(0).max(10).default(0),
   contentQuality: z.coerce.number().int().min(0).max(10).default(0),
-  aestheticFit: z.coerce.number().int().min(0).max(10).default(0),
-  authorityTrust: z.coerce.number().int().min(0).max(10).default(0),
-  logisticsFit: z.coerce.number().int().min(0).max(10).default(0),
-  purchaseIntent: z.coerce.number().int().min(0).max(10).default(0),
+  trustPurchaseIntentScore: z.coerce.number().int().min(0).max(10).default(0),
+  overallScoreOverride: nullableNumber,
 });
 
 export const creatorUpdateSchema = z.object({
@@ -83,12 +104,14 @@ export const creatorUpdateSchema = z.object({
   handle: z.string().trim().min(1).optional(),
   platform: z.string().trim().min(1).optional(),
   profileUrl: updateNullableString,
+  profileImageUrl: updateNullableString,
   email: updateNullableString,
   location: updateNullableString,
   niche: updateNullableString,
   source: updateNullableString,
   audienceSummary: updateNullableString,
   whyFit: updateNullableString,
+  nextAction: updateNullableString,
   notes: z.string().optional(),
   tags: z.array(z.string()).optional(),
   followers: nullableInt,
@@ -99,19 +122,20 @@ export const creatorUpdateSchema = z.object({
   conversions: z.coerce.number().int().nonnegative().optional(),
   revenueCents: z.coerce.number().int().nonnegative().optional(),
   stage: pipelineStageSchema.optional(),
+  lastContactedAt: updateNullableDate,
+  nextFollowUpAt: updateNullableDate,
   priority: prioritySchema.optional(),
-  audienceFit: z.coerce.number().int().min(0).max(10).optional(),
+  visualFitScore: z.coerce.number().int().min(0).max(10).optional(),
+  commercialFitScore: z.coerce.number().int().min(0).max(10).optional(),
   contentQuality: z.coerce.number().int().min(0).max(10).optional(),
-  aestheticFit: z.coerce.number().int().min(0).max(10).optional(),
-  authorityTrust: z.coerce.number().int().min(0).max(10).optional(),
-  logisticsFit: z.coerce.number().int().min(0).max(10).optional(),
-  purchaseIntent: z.coerce.number().int().min(0).max(10).optional(),
+  trustPurchaseIntentScore: z.coerce.number().int().min(0).max(10).optional(),
+  overallScoreOverride: nullableNumber,
 });
 
 export function withOverallScore(data: z.infer<typeof creatorInputSchema>) {
   return {
     ...data,
-    overallScore: calculateOverallScore(data),
+    overallScore: calculateOverallScore(data, data.overallScoreOverride),
   };
 }
 

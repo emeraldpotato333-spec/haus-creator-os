@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowRight, Check, Copy, ExternalLink, ListChecks, MessageSquareText, Plus, Save } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Copy, ExternalLink, ListChecks, MessageSquareText, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmActionDialog } from "@/components/app/confirm-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,12 +31,14 @@ type CreatorDetail = {
   handle: string;
   platform: string;
   profileUrl?: string | null;
+  profileImageUrl?: string | null;
   email?: string | null;
   location?: string | null;
   niche?: string | null;
   source?: string | null;
   audienceSummary?: string | null;
   whyFit?: string | null;
+  nextAction?: string | null;
   notes: string;
   tags: string[];
   followers?: number | null;
@@ -46,13 +49,14 @@ type CreatorDetail = {
   conversions: number;
   revenueCents: number;
   stage: (typeof PIPELINE_STAGES)[number]["value"];
+  lastContactedAt?: string | Date | null;
+  nextFollowUpAt?: string | Date | null;
   priority: "LOW" | "MEDIUM" | "HIGH";
-  audienceFit: number;
+  visualFitScore: number;
+  commercialFitScore: number;
   contentQuality: number;
-  aestheticFit: number;
-  authorityTrust: number;
-  logisticsFit: number;
-  purchaseIntent: number;
+  trustPurchaseIntentScore: number;
+  overallScoreOverride?: number | null;
   overallScore: number;
   updatedAt?: string | Date;
   stageChangedAt?: string | Date;
@@ -71,6 +75,7 @@ type TemplateRecord = {
 };
 
 type SaveState = "saved" | "saving" | "dirty" | "failed";
+type TaskStatus = CreatorDetail["tasks"][number]["status"];
 
 type CreatorWritePayload = Pick<
   CreatorDetail,
@@ -78,12 +83,14 @@ type CreatorWritePayload = Pick<
   | "handle"
   | "platform"
   | "profileUrl"
+  | "profileImageUrl"
   | "email"
   | "location"
   | "niche"
   | "source"
   | "audienceSummary"
   | "whyFit"
+  | "nextAction"
   | "notes"
   | "tags"
   | "followers"
@@ -94,13 +101,14 @@ type CreatorWritePayload = Pick<
   | "conversions"
   | "revenueCents"
   | "stage"
+  | "lastContactedAt"
+  | "nextFollowUpAt"
   | "priority"
-  | "audienceFit"
+  | "visualFitScore"
+  | "commercialFitScore"
   | "contentQuality"
-  | "aestheticFit"
-  | "authorityTrust"
-  | "logisticsFit"
-  | "purchaseIntent"
+  | "trustPurchaseIntentScore"
+  | "overallScoreOverride"
 >;
 
 type CreatorWriteKey = keyof CreatorWritePayload;
@@ -110,12 +118,14 @@ const CREATOR_WRITE_KEYS = new Set<keyof CreatorDetail>([
   "handle",
   "platform",
   "profileUrl",
+  "profileImageUrl",
   "email",
   "location",
   "niche",
   "source",
   "audienceSummary",
   "whyFit",
+  "nextAction",
   "notes",
   "tags",
   "followers",
@@ -126,28 +136,32 @@ const CREATOR_WRITE_KEYS = new Set<keyof CreatorDetail>([
   "conversions",
   "revenueCents",
   "stage",
+  "lastContactedAt",
+  "nextFollowUpAt",
   "priority",
-  "audienceFit",
+  "visualFitScore",
+  "commercialFitScore",
   "contentQuality",
-  "aestheticFit",
-  "authorityTrust",
-  "logisticsFit",
-  "purchaseIntent",
+  "trustPurchaseIntentScore",
+  "overallScoreOverride",
 ]);
 
 const NULLABLE_TEXT_KEYS = new Set<CreatorWriteKey>([
   "profileUrl",
+  "profileImageUrl",
   "email",
   "location",
   "niche",
   "source",
   "audienceSummary",
   "whyFit",
+  "nextAction",
   "contentLiveUrl",
   "affiliateCode",
 ]);
 
-const OPTIONAL_NUMBER_KEYS = new Set<CreatorWriteKey>(["followers", "engagementRate", "estimatedReach"]);
+const OPTIONAL_NUMBER_KEYS = new Set<CreatorWriteKey>(["followers", "engagementRate", "estimatedReach", "overallScoreOverride"]);
+const OPTIONAL_DATE_KEYS = new Set<CreatorWriteKey>(["lastContactedAt", "nextFollowUpAt"]);
 
 export function CreatorDetailClient({
   initialCreator,
@@ -162,6 +176,8 @@ export function CreatorDetailClient({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [autosaveNonce, setAutosaveNonce] = useState(0);
   const [isPending, startTransition] = useTransition();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<CreatorDetail["tasks"][number] | null>(null);
   const dirtyRef = useRef(false);
   const isSavingRef = useRef(false);
   const pendingPatchRef = useRef<Partial<CreatorWritePayload>>({});
@@ -169,13 +185,11 @@ export function CreatorDetailClient({
   const score = useMemo(
     () =>
       calculateOverallScore({
-        audienceFit: creator.audienceFit,
+        visualFitScore: creator.visualFitScore,
+        commercialFitScore: creator.commercialFitScore,
         contentQuality: creator.contentQuality,
-        aestheticFit: creator.aestheticFit,
-        authorityTrust: creator.authorityTrust,
-        logisticsFit: creator.logisticsFit,
-        purchaseIntent: creator.purchaseIntent,
-      }),
+        trustPurchaseIntentScore: creator.trustPurchaseIntentScore,
+      }, creator.overallScoreOverride),
     [creator],
   );
   const suggestion = evaluationSuggestion(creator.stage, score);
@@ -277,9 +291,16 @@ export function CreatorDetailClient({
         }),
       });
       if (response.ok) {
+        const task = await response.json();
+        setCreator((current) => ({
+          ...current,
+          tasks: [task, ...current.tasks],
+        }));
         toast.success("Task added.");
-        router.refresh();
+        return;
       }
+
+      toast.error("Task could not be added.");
     });
   }
 
@@ -296,10 +317,71 @@ export function CreatorDetailClient({
         }),
       });
       if (response.ok) {
+        const interaction = await response.json();
+        setCreator((current) => ({
+          ...current,
+          interactions: [interaction, ...current.interactions],
+        }));
         toast.success("Note added.");
-        router.refresh();
+        return;
       }
+
+      toast.error("Note could not be added.");
     });
+  }
+
+  function setTaskStatus(taskId: string, status: TaskStatus) {
+    startTransition(async () => {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        toast.error("Task status could not be updated.");
+        return;
+      }
+
+      const updated = await response.json();
+      setCreator((current) => ({
+        ...current,
+        tasks: current.tasks.map((task) => (task.id === taskId ? { ...task, ...updated } : task)),
+      }));
+    });
+  }
+
+  async function deleteTask() {
+    if (!deleteTaskTarget) {
+      return;
+    }
+
+    const response = await fetch(`/api/tasks/${deleteTaskTarget.id}`, { method: "DELETE" });
+
+    if (!response.ok) {
+      toast.error("Task could not be deleted.");
+      return;
+    }
+
+    setCreator((current) => ({
+      ...current,
+      tasks: current.tasks.filter((task) => task.id !== deleteTaskTarget.id),
+    }));
+    setDeleteTaskTarget(null);
+    toast.success("Task deleted.");
+  }
+
+  async function deleteCreator() {
+    const response = await fetch(`/api/creators/${creator.id}`, { method: "DELETE" });
+
+    if (!response.ok) {
+      toast.error("Creator could not be deleted.");
+      return;
+    }
+
+    toast.success("Creator deleted.");
+    router.push("/creators");
+    router.refresh();
   }
 
   return (
@@ -330,7 +412,7 @@ export function CreatorDetailClient({
                 </div>
                 <CreatorMetaBadges creator={{ ...creator, overallScore: score }} />
                 <div className="rounded-lg border bg-background/50 p-3 text-sm leading-6 text-muted-foreground">
-                  <span className="font-medium text-foreground">At a glance:</span> {fitLine}
+                  <span className="font-medium text-foreground">Next action:</span> {creator.nextAction || fitLine}
                 </div>
               </div>
               <div className="text-right">
@@ -351,6 +433,10 @@ export function CreatorDetailClient({
                     Autosave failed: {saveError}
                   </div>
                 ) : null}
+                <Button variant="ghost" size="sm" className="mt-4" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 />
+                  Delete creator
+                </Button>
               </div>
             </div>
 
@@ -366,12 +452,16 @@ export function CreatorDetailClient({
               <Field label="Source" value={creator.source ?? ""} onChange={(value) => update("source", value)} />
             </div>
             <div className="grid gap-2">
-              <Label>Why this creator fits</Label>
+              <Label>Audience notes</Label>
               <Textarea value={creator.audienceSummary ?? ""} onChange={(event) => update("audienceSummary", event.target.value)} className="min-h-24" />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Profile image URL" value={creator.profileImageUrl ?? ""} onChange={(value) => update("profileImageUrl", value)} />
+              <Field label="Profile URL" value={creator.profileUrl ?? ""} onChange={(value) => update("profileUrl", value)} />
+            </div>
             <div className="grid gap-2">
-              <Label>What happens next</Label>
-              <Textarea value={creator.whyFit ?? ""} onChange={(event) => update("whyFit", event.target.value)} className="min-h-24" />
+              <Label>Next action</Label>
+              <Textarea value={creator.nextAction ?? ""} onChange={(event) => update("nextAction", event.target.value)} className="min-h-24" />
             </div>
           </CardContent>
         </Card>
@@ -421,13 +511,30 @@ export function CreatorDetailClient({
                 </form>
                 {creator.tasks.map((task) => (
                   <div key={task.id} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="font-medium">{task.title}</div>
-                      <Badge variant={task.status === "DONE" ? "secondary" : "outline"}>{task.status}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Select value={task.status} onValueChange={(value) => value && setTaskStatus(task.id, value as TaskStatus)}>
+                          <SelectTrigger className="h-8 w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TODO">Todo</SelectItem>
+                            <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                            <SelectItem value="DONE">Done</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon-sm" onClick={() => setDeleteTaskTarget(task)} aria-label={`Delete ${task.title}`}>
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No due date"}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "No due date"}
+                    </div>
                   </div>
                 ))}
+                {creator.tasks.length === 0 ? <EmptyLine text="Clear desk. No open tasks." /> : null}
               </CardContent>
             </Card>
           </TabsContent>
@@ -450,6 +557,7 @@ export function CreatorDetailClient({
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.body}</p>
                   </div>
                 ))}
+                {creator.interactions.length === 0 ? <EmptyLine text="No notes yet." /> : null}
               </CardContent>
             </Card>
           </TabsContent>
@@ -507,6 +615,8 @@ export function CreatorDetailClient({
             <div className="grid gap-3 rounded-lg border bg-background/60 p-3">
               <SummaryRow label="Current stage" value={stageLabel(creator.stage)} />
               <SummaryRow label="Last updated" value={lastUpdated} />
+              <SummaryRow label="Last contacted" value={creator.lastContactedAt ? new Date(creator.lastContactedAt).toLocaleDateString() : "Not set"} />
+              <SummaryRow label="Next follow-up" value={creator.nextFollowUpAt ? new Date(creator.nextFollowUpAt).toLocaleDateString() : "Not set"} />
               <SummaryRow label="High-fit read" value={score >= 8 ? "Yes, worth momentum" : "Needs more signal"} />
             </div>
             <div className="rounded-lg border border-accent/40 bg-accent/20 p-3">
@@ -515,7 +625,7 @@ export function CreatorDetailClient({
                 What happens next
               </div>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {nextOpenTask?.title ?? creator.whyFit ?? "Add the next action so this record has a clear owner and direction."}
+                {nextOpenTask?.title ?? creator.nextAction ?? "Add the next action so this record has a clear owner and direction."}
               </p>
             </div>
           </CardContent>
@@ -540,6 +650,18 @@ export function CreatorDetailClient({
                 <SelectItem value="HIGH">High priority</SelectItem>
               </SelectContent>
             </Select>
+            <Field
+              label="Last contacted"
+              type="date"
+              value={creator.lastContactedAt ? new Date(creator.lastContactedAt).toISOString().slice(0, 10) : ""}
+              onChange={(value) => update("lastContactedAt", value || null)}
+            />
+            <Field
+              label="Next follow-up"
+              type="date"
+              value={creator.nextFollowUpAt ? new Date(creator.nextFollowUpAt).toISOString().slice(0, 10) : ""}
+              onChange={(value) => update("nextFollowUpAt", value || null)}
+            />
             <div className="text-sm text-muted-foreground">Current stage: {stageLabel(creator.stage)}</div>
           </CardContent>
         </Card>
@@ -562,6 +684,12 @@ export function CreatorDetailClient({
                 />
               </label>
             ))}
+            <Field
+              label="Overall override"
+              type="number"
+              value={creator.overallScoreOverride != null ? String(creator.overallScoreOverride) : ""}
+              onChange={(value) => update("overallScoreOverride", value ? Number(value) : null)}
+            />
           </CardContent>
         </Card>
 
@@ -580,6 +708,22 @@ export function CreatorDetailClient({
           </CardContent>
         </Card>
       </aside>
+      <ConfirmActionDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete ${creator.name}?`}
+        description="This removes the creator and related tasks from the workspace."
+        confirmLabel="Delete creator"
+        onConfirm={deleteCreator}
+      />
+      <ConfirmActionDialog
+        open={Boolean(deleteTaskTarget)}
+        onOpenChange={(open) => !open && setDeleteTaskTarget(null)}
+        title={`Delete ${deleteTaskTarget?.title ?? "task"}?`}
+        description="This task will be removed from the creator record."
+        confirmLabel="Delete task"
+        onConfirm={deleteTask}
+      />
     </div>
   );
 }
@@ -604,6 +748,18 @@ function normalizePatchValue(key: CreatorWriteKey, value: CreatorDetail[CreatorW
 
     const numberValue = Number(value);
     return Number.isFinite(numberValue) ? numberValue : null;
+  }
+
+  if (OPTIONAL_DATE_KEYS.has(key)) {
+    if (!value) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return typeof value === "string" ? value : null;
   }
 
   if (Array.isArray(value)) {

@@ -65,12 +65,14 @@ model Creator {
   handle             String
   platform           String            @default("Instagram")
   profileUrl         String?
+  profileImageUrl    String?
   email              String?
   location           String?
   niche              String?
   source             String?
   audienceSummary    String?
   whyFit             String?
+  nextAction         String?
   notes              String            @default("")
   tags               String[]          @default([])
   followers          Int?
@@ -82,14 +84,21 @@ model Creator {
   revenueCents       Int               @default(0)
   stage              PipelineStage     @default(SOURCED)
   stageChangedAt     DateTime          @default(now())
+  lastContactedAt    DateTime?
+  nextFollowUpAt     DateTime?
   priority           TaskPriority      @default(MEDIUM)
+  visualFitScore     Int               @default(0)
+  commercialFitScore Int               @default(0)
+  trustPurchaseIntentScore Int         @default(0)
   audienceFit        Int               @default(0)
   contentQuality     Int               @default(0)
   aestheticFit       Int               @default(0)
   authorityTrust     Int               @default(0)
   logisticsFit       Int               @default(0)
   purchaseIntent     Int               @default(0)
+  overallScoreOverride Float?
   overallScore       Float             @default(0)
+  isDemo             Boolean           @default(false)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   interactions       Interaction[]
@@ -128,6 +137,7 @@ model Task {
   dueDate       DateTime?
   completedAt   DateTime?
   automationKey String?
+  isDemo        Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
