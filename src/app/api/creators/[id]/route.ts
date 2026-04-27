@@ -152,15 +152,55 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const prisma = getPrisma();
 
-  const creator = await prisma.creator.findUnique({ where: { id }, select: { id: true } });
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      const creator = await tx.creator.findUnique({ where: { id }, select: { id: true } });
 
-  if (!creator) {
-    return NextResponse.json({ error: "Creator not found" }, { status: 404 });
+      if (!creator) {
+        return false;
+      }
+
+      await tx.interaction.updateMany({
+        where: { creatorId: id },
+        data: { creatorId: null },
+      });
+
+      await tx.brief.updateMany({
+        where: { creatorId: id },
+        data: { creatorId: null },
+      });
+
+      await tx.task.deleteMany({
+        where: { creatorId: id },
+      });
+
+      await tx.creatorTemplate.deleteMany({
+        where: { creatorId: id },
+      });
+
+      await tx.creator.deleteMany({
+        where: { id },
+      });
+
+      return true;
+    });
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Creator not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true, id });
+  } catch (error) {
+    logCreatorRouteError({
+      route: "creators.delete",
+      creatorId: id,
+      method: "DELETE",
+      payloadKeys: [],
+      error,
+    });
+
+    return NextResponse.json({ error: getCreatorDeleteErrorMessage(error) }, { status: getStatusForError(error) });
   }
-
-  await prisma.creator.delete({ where: { id } });
-
-  return NextResponse.json({ ok: true, id });
 }
 
 function stripUndefined<T extends Record<string, unknown>>(value: T) {
@@ -177,6 +217,18 @@ function getCreatorUpdateErrorMessage(error: unknown) {
   }
 
   return "Creator update failed.";
+}
+
+function getCreatorDeleteErrorMessage(error: unknown) {
+  if (isPrismaError(error) && (error.code === "P2021" || error.code === "P2022")) {
+    return "Delete failed because production is using an older database schema. Run Prisma migrations, then retry.";
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Creator delete failed.";
 }
 
 function getStatusForError(error: unknown) {
