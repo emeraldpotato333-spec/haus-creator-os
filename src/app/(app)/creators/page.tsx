@@ -35,6 +35,8 @@ async function loadCreatorsPageData() {
         niche: true,
         stage: true,
         priority: true,
+        projectType: true,
+        tier: true,
         tags: true,
         nextAction: true,
         overallScore: true,
@@ -98,6 +100,8 @@ async function loadLegacyCreators(prisma: PrismaClient) {
   return creators.map((creator) => ({
     ...creator,
     profileImageUrl: null,
+    projectType: null,
+    tier: null,
     nextAction: creator.whyFit || null,
   }));
 }

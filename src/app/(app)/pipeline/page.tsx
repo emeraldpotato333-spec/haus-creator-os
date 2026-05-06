@@ -13,7 +13,9 @@ export default async function PipelinePage() {
 
   return (
     <>
-      <PageHeading eyebrow="Drag and decide" title="Pipeline" />
+      <PageHeading eyebrow="Overview only" title="Pipeline">
+        <div className="text-sm text-muted-foreground">Use this for overview. Do daily work from the Dashboard.</div>
+      </PageHeading>
       <RuntimeNotice notices={notices} />
       <PipelineBoard creators={serialize(creators)} />
     </>
@@ -36,6 +38,9 @@ async function loadPipelineData() {
         profileImageUrl: true,
         niche: true,
         nextAction: true,
+        projectType: true,
+        collabAngle: true,
+        tier: true,
         tags: true,
         priority: true,
       },
@@ -85,5 +90,8 @@ async function loadLegacyPipelineCreators(prisma: PrismaClient) {
     ...creator,
     profileImageUrl: null,
     nextAction: creator.whyFit || null,
+    projectType: null,
+    collabAngle: creator.whyFit || null,
+    tier: null,
   }));
 }

@@ -21,6 +21,43 @@ enum PipelineStage {
   AMBASSADOR
 }
 
+enum CreatorTier {
+  TIER_1
+  TIER_2
+  TIER_3
+  TIER_4
+}
+
+enum BossApprovalStatus {
+  NEEDS_APPROVAL
+  WAITING
+  APPROVED
+  DECLINED
+}
+
+enum SampleStatus {
+  PENDING
+  SENT
+  DELIVERED
+}
+
+enum CreatorBriefStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+}
+
+enum UsageRightsStatus {
+  PENDING
+  CONFIRMED
+}
+
+enum AdPotential {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -72,7 +109,23 @@ model Creator {
   source             String?
   audienceSummary    String?
   whyFit             String?
+  projectType        String?
+  projectSize        String?
+  timeline           String?
+  tileInterest       String?
+  collabAngle        String?
+  proposedOffer      String?
+  tier               CreatorTier?
   nextAction         String?
+  bossApprovalNeeded Boolean?
+  bossApprovalStatus BossApprovalStatus?
+  sampleStatus       SampleStatus?
+  briefStatus        CreatorBriefStatus?
+  contentDueDate     DateTime?
+  usageRightsStatus  UsageRightsStatus?
+  adPotential        AdPotential?
+  isTodayFocus       Boolean           @default(false)
+  todayFocusRank     Int?
   notes              String            @default("")
   tags               String[]          @default([])
   followers          Int?
@@ -107,6 +160,8 @@ model Creator {
   linkedTemplates    CreatorTemplate[]
 
   @@index([stage])
+  @@index([tier])
+  @@index([isTodayFocus, todayFocusRank])
   @@index([updatedAt])
   @@unique([platform, handle])
 }

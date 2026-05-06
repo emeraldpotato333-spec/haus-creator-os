@@ -8,13 +8,13 @@ import { serialize } from "@/lib/serialize";
 export const dynamic = "force-dynamic";
 
 export default async function TasksPage() {
-  const { tasks, creators, notices } = await loadTasksPageData();
+  const { tasks, creators, creatorActions, notices } = await loadTasksPageData();
 
   return (
     <>
       <PageHeading eyebrow="Next actions" title="Tasks" />
       <RuntimeNotice notices={notices} />
-      <TasksClient tasks={serialize(tasks)} creators={serialize(creators)} />
+      <TasksClient tasks={serialize(tasks)} creators={serialize(creators)} creatorActions={serialize(creatorActions)} />
     </>
   );
 }
@@ -23,7 +23,7 @@ async function loadTasksPageData() {
   const prisma = getPrisma();
 
   try {
-    const [tasks, creators] = await Promise.all([
+    const [tasks, creators, creatorActions] = await Promise.all([
       prisma.task.findMany({
         select: {
           id: true,
@@ -43,9 +43,25 @@ async function loadTasksPageData() {
         orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
       }),
       prisma.creator.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, handle: true } }),
+      prisma.creator.findMany({
+        where: {
+          nextAction: { not: null },
+        },
+        orderBy: [{ isTodayFocus: "desc" }, { updatedAt: "desc" }],
+        select: {
+          id: true,
+          name: true,
+          handle: true,
+          stage: true,
+          nextAction: true,
+          tier: true,
+          bossApprovalStatus: true,
+          sampleStatus: true,
+        },
+      }),
     ]);
 
-    return { tasks, creators, notices: [] as string[] };
+    return { tasks, creators, creatorActions, notices: [] as string[] };
   } catch (error) {
     logPrismaPageError("tasks.current", error);
 
@@ -65,6 +81,7 @@ async function loadTasksPageData() {
       return {
         tasks: tasks.map((task) => ({ ...task, creator: null })),
         creators: [],
+        creatorActions: [],
         notices: ["Tasks loaded without creator lookups. Run Prisma migrations so linked creator fields are available."],
       };
     } catch (fallbackError) {
@@ -74,6 +91,7 @@ async function loadTasksPageData() {
     return {
       tasks: [],
       creators: [],
+      creatorActions: [],
       notices: [getPrismaPageNotice("Tasks", error)],
     };
   }

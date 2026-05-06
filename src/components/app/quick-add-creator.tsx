@@ -4,6 +4,7 @@ import { type FormEvent, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { defaultBossApprovalNeeded, getSuggestedNextAction, TIER_CONFIG } from "@/lib/creator-command-center";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 export function QuickAddCreator() {
@@ -22,6 +24,9 @@ export function QuickAddCreator() {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [tier, setTier] = useState<keyof typeof TIER_CONFIG | "">("");
+  const [nextAction, setNextAction] = useState("");
+  const [bossApprovalNeeded, setBossApprovalNeeded] = useState<"" | "true" | "false">("");
   const formRef = useRef<HTMLFormElement>(null);
 
   async function submitCreator(formData: FormData) {
@@ -29,18 +34,19 @@ export function QuickAddCreator() {
       name: getRequiredString(formData, "name"),
       handle: getRequiredString(formData, "handle"),
       platform: getOptionalString(formData, "platform") || "Instagram",
-      profileUrl: getNullableString(formData, "profileUrl"),
-      profileImageUrl: getNullableString(formData, "profileImageUrl"),
-      niche: getNullableString(formData, "niche"),
-      source: getNullableString(formData, "source"),
-      audienceSummary: getNullableString(formData, "audienceSummary"),
       nextAction: getNullableString(formData, "nextAction"),
+      projectType: getNullableString(formData, "projectType"),
+      tier: getNullableString(formData, "tier"),
+      collabAngle: getNullableString(formData, "collabAngle"),
+      bossApprovalNeeded: getNullableBoolean(formData, "bossApprovalNeeded"),
+      whyFit: getNullableString(formData, "collabAngle"),
+      notes: getOptionalString(formData, "notes"),
+      source: getNullableString(formData, "source"),
+      niche: getNullableString(formData, "projectType"),
+      contentQuality: getScore(formData, "contentQuality"),
       visualFitScore: getScore(formData, "visualFitScore"),
       commercialFitScore: getScore(formData, "commercialFitScore"),
-      contentQuality: getScore(formData, "contentQuality"),
-      trustPurchaseIntentScore: getScore(formData, "trustPurchaseIntentScore"),
-      whyFit: getNullableString(formData, "notes"),
-      notes: getOptionalString(formData, "notes"),
+      trustPurchaseIntentScore: getScore(formData, "brandFit"),
       tags: getTags(formData),
     };
 
@@ -74,6 +80,9 @@ export function QuickAddCreator() {
     console.info("[HAUS Creator OS] Quick Add success", result);
     setSubmitError(null);
     formRef.current?.reset();
+    setTier("");
+    setNextAction("");
+    setBossApprovalNeeded("");
     setOpen(false);
     toast.success(`Creator added${result?.name ? `: ${result.name}` : "."}`);
     router.refresh();
@@ -89,6 +98,24 @@ export function QuickAddCreator() {
     });
   }
 
+  function handleTierChange(value: "" | keyof typeof TIER_CONFIG | null) {
+    if (!value) {
+      setTier("");
+      return;
+    }
+
+    const nextTier = value as keyof typeof TIER_CONFIG;
+    setTier(nextTier);
+    setNextAction((current) => current || getSuggestedNextAction(nextTier));
+    setBossApprovalNeeded((current) => {
+      if (current) {
+        return current;
+      }
+
+      return defaultBossApprovalNeeded(nextTier) ? "true" : "false";
+    });
+  }
+
   return (
     <Dialog
       open={open}
@@ -96,18 +123,23 @@ export function QuickAddCreator() {
         setOpen(nextOpen);
         if (nextOpen) {
           setSubmitError(null);
+          return;
         }
+
+        setTier("");
+        setNextAction("");
+        setBossApprovalNeeded("");
       }}
     >
       <DialogTrigger render={<Button size="sm" />}>
         <Plus />
-        Quick add
+        Quick classify
       </DialogTrigger>
       <DialogContent className="max-w-2xl p-0">
         <DialogHeader className="border-b px-6 py-5">
-          <DialogTitle>Quick Add Creator</DialogTitle>
+          <DialogTitle>Quick Classify</DialogTitle>
           <DialogDescription>
-            Capture the signal now. You can refine scores, tasks, and templates later.
+            Add the lead, decide the tier, and leave with one clear next action.
           </DialogDescription>
         </DialogHeader>
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-5 px-6 py-5">
@@ -125,33 +157,65 @@ export function QuickAddCreator() {
               <Input name="platform" placeholder="Instagram" />
             </label>
             <label className="grid gap-2">
-              <Label>Profile URL</Label>
-              <Input name="profileUrl" placeholder="https://instagram.com/..." />
-            </label>
-            <label className="grid gap-2">
-              <Label>Profile image URL</Label>
-              <Input name="profileImageUrl" placeholder="https://..." />
-            </label>
-            <label className="grid gap-2">
-              <Label>Niche</Label>
-              <Input name="niche" placeholder="collected coastal interiors" />
-            </label>
-            <label className="grid gap-2">
               <Label>Source</Label>
-              <Input name="source" placeholder="Instagram save folder" />
+              <Input name="source" placeholder="Saved post, showroom referral, DM" />
+            </label>
+            <label className="grid gap-2">
+              <Label>Project type</Label>
+              <Input name="projectType" placeholder="Kitchen, bath, fireplace, UGC set" />
+            </label>
+            <label className="grid gap-2">
+              <Label>Tier</Label>
+              <Select name="tier" value={tier} onValueChange={handleTierChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TIER_CONFIG).map(([value, config]) => (
+                    <SelectItem key={value} value={value}>
+                      {config.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-2">
+              <Label>Boss approval needed?</Label>
+              <Select name="bossApprovalNeeded" value={bossApprovalNeeded} onValueChange={(value) => setBossApprovalNeeded(value as typeof bossApprovalNeeded)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Yes</SelectItem>
+                  <SelectItem value="false">No</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <label className="grid gap-2">
               <Label>Next action</Label>
-              <Input name="nextAction" placeholder="Send tailored outreach" />
+              <Input
+                name="nextAction"
+                value={nextAction}
+                onChange={(event) => setNextAction(event.target.value)}
+                placeholder="Prepare boss approval packet"
+              />
             </label>
           </div>
+          <label className="grid gap-2">
+            <Label>Collab angle</Label>
+            <Textarea
+              name="collabAngle"
+              className="min-h-24"
+              placeholder="Warm limestone bath project, believable install story, strong before/after potential."
+            />
+          </label>
           <div className="grid grid-cols-4 gap-4">
             <label className="grid gap-2">
-              <Label>Visual fit</Label>
+              <Label>Fit score</Label>
               <Input name="visualFitScore" type="number" min={0} max={10} defaultValue={0} />
             </label>
             <label className="grid gap-2">
-              <Label>Commercial fit</Label>
+              <Label>Audience size</Label>
               <Input name="commercialFitScore" type="number" min={0} max={10} defaultValue={0} />
             </label>
             <label className="grid gap-2">
@@ -159,29 +223,21 @@ export function QuickAddCreator() {
               <Input name="contentQuality" type="number" min={0} max={10} defaultValue={0} />
             </label>
             <label className="grid gap-2">
-              <Label>Trust / intent</Label>
-              <Input name="trustPurchaseIntentScore" type="number" min={0} max={10} defaultValue={0} />
+              <Label>Brand fit</Label>
+              <Input name="brandFit" type="number" min={0} max={10} defaultValue={0} />
             </label>
           </div>
-          <label className="grid gap-2">
-            <Label>Audience notes</Label>
-            <Textarea
-              name="audienceSummary"
-              className="min-h-28"
-              placeholder="Premium homeowners, remodelers, and design-curious buyers."
-            />
-          </label>
           <label className="grid gap-2">
             <Label>Notes</Label>
             <Textarea
               name="notes"
               className="min-h-28"
-              placeholder="Why the fit is interesting, objections, context, or angle."
+              placeholder="Anything helpful. Keep it light. The goal is one clear next move."
             />
           </label>
           <label className="grid gap-2">
             <Label>Tags</Label>
-            <Input name="tags" placeholder="designer, warm-minimal, high-fit" />
+            <Input name="tags" placeholder="kitchen, anchor, ugc, nurture" />
           </label>
           <div className="flex justify-end gap-2 border-t pt-5">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
@@ -228,6 +284,15 @@ function getScore(formData: FormData, key: string) {
   }
 
   return Math.max(0, Math.min(10, parsed));
+}
+
+function getNullableBoolean(formData: FormData, key: string) {
+  const value = getFormString(formData, key);
+  if (!value) {
+    return null;
+  }
+
+  return value === "true";
 }
 
 function getTags(formData: FormData) {
