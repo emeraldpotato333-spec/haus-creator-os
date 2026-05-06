@@ -4,7 +4,7 @@ import { type FormEvent, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { defaultBossApprovalNeeded, getSuggestedNextAction, TIER_CONFIG } from "@/lib/creator-command-center";
+import { defaultBossApprovalNeeded, getSuggestedExactStepForTier, getSuggestedNextAction, TIER_CONFIG } from "@/lib/creator-command-center";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +37,7 @@ export function QuickAddCreator() {
       nextAction: getNullableString(formData, "nextAction"),
       projectType: getNullableString(formData, "projectType"),
       tier: getNullableString(formData, "tier"),
+      exactStep: getNullableString(formData, "exactStep"),
       collabAngle: getNullableString(formData, "collabAngle"),
       bossApprovalNeeded: getNullableBoolean(formData, "bossApprovalNeeded"),
       whyFit: getNullableString(formData, "collabAngle"),
@@ -143,6 +144,7 @@ export function QuickAddCreator() {
           </DialogDescription>
         </DialogHeader>
         <form ref={formRef} onSubmit={handleSubmit} className="grid gap-5 px-6 py-5">
+          <input type="hidden" name="exactStep" value={tier ? getSuggestedExactStepForTier(tier) ?? "" : ""} readOnly />
           <div className="grid grid-cols-2 gap-4">
             <label className="grid gap-2">
               <Label>Name</Label>

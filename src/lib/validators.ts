@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EXACT_STEP_VALUES } from "@/lib/creator-command-center";
 import { calculateOverallScore } from "@/lib/domain";
 
 const nullableString = z
@@ -88,6 +89,7 @@ export const sampleStatusSchema = z.enum(["PENDING", "SENT", "DELIVERED"]);
 export const creatorBriefStatusSchema = z.enum(["DRAFT", "SENT", "ACCEPTED"]);
 export const usageRightsStatusSchema = z.enum(["PENDING", "CONFIRMED"]);
 export const adPotentialSchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+export const exactStepSchema = z.enum(EXACT_STEP_VALUES);
 
 export const creatorInputSchema = z.object({
   name: z.string().trim().min(1),
@@ -108,6 +110,7 @@ export const creatorInputSchema = z.object({
   collabAngle: nullableString,
   proposedOffer: nullableString,
   tier: creatorTierSchema.nullable().optional(),
+  exactStep: exactStepSchema.nullable().optional(),
   nextAction: nullableString,
   bossApprovalNeeded: nullableBoolean,
   bossApprovalStatus: bossApprovalStatusSchema.nullable().optional(),
@@ -157,6 +160,7 @@ export const creatorUpdateSchema = z.object({
   collabAngle: updateNullableString,
   proposedOffer: updateNullableString,
   tier: creatorTierSchema.nullable().optional(),
+  exactStep: exactStepSchema.nullable().optional(),
   nextAction: updateNullableString,
   bossApprovalNeeded: nullableBoolean,
   bossApprovalStatus: bossApprovalStatusSchema.nullable().optional(),

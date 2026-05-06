@@ -78,8 +78,49 @@ Timeline:
 
 Usage rights:
 
-Posting / ad usage notes:`,
+    Posting / ad usage notes:`,
     variables: ["creator_name"],
+  },
+  {
+    name: "Usage rights checklist",
+    category: "RIGHTS",
+    subject: "HAUS usage rights follow-up",
+    body: `Confirm before paid use:
+
+- What channels can HAUS use the asset on?
+- How long can HAUS run it?
+- Is whitelisting needed?
+- Are edits, text overlays, and hook tests allowed?
+- Is there any talent / music limitation to flag?
+
+Suggested message:
+
+Hi {{creator_name}},
+
+We’d love to confirm paid usage terms for the HAUS content so we can use it cleanly across ads, proof, and reposting.`,
+    variables: ["creator_name"],
+  },
+  {
+    name: "Proof / Ad Review Checklist",
+    category: "RIGHTS",
+    subject: "HAUS proof and ad review",
+    body: `Before marking ad ready, check:
+
+- Best opening hook
+- Strongest before / after reveal
+- Clear tile or material focus
+- Install credibility
+- Rights confirmed
+- Raw footage quality
+- Whether this belongs in proof library, paid ads, or both
+
+Decision:
+
+- Add to proof library
+- Mark ad ready
+- Hold for edits
+- Recruit more creators in this angle`,
+    variables: [],
   },
 ] as const;
 

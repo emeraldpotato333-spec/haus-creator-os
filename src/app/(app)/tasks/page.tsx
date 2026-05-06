@@ -1,6 +1,7 @@
 import { PageHeading } from "@/components/app/page-heading";
 import { RuntimeNotice } from "@/components/app/runtime-notice";
 import { TasksClient } from "@/components/tasks/tasks-client";
+import { getLegacyExactStepFromStage, isExactStepValue } from "@/lib/creator-command-center";
 import { getPrismaPageNotice, logPrismaPageError } from "@/lib/prisma-compat";
 import { getPrisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
@@ -53,6 +54,7 @@ async function loadTasksPageData() {
           name: true,
           handle: true,
           stage: true,
+          exactStep: true,
           nextAction: true,
           tier: true,
           bossApprovalStatus: true,
@@ -61,7 +63,17 @@ async function loadTasksPageData() {
       }),
     ]);
 
-    return { tasks, creators, creatorActions, notices: [] as string[] };
+    return {
+      tasks,
+      creators,
+      creatorActions: creatorActions.map((creator) => ({
+        ...creator,
+        exactStep: isExactStepValue(creator.exactStep)
+          ? creator.exactStep
+          : getLegacyExactStepFromStage(creator.stage, creator.nextAction, creator.tier),
+      })),
+      notices: [] as string[],
+    };
   } catch (error) {
     logPrismaPageError("tasks.current", error);
 

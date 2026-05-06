@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { Download, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { BossApprovalStatus, PipelineStage, SampleStatus } from "@/generated/prisma/client";
+import type { ExactStepValue } from "@/lib/creator-command-center";
 import { getTierShortLabel, isWaiting } from "@/lib/creator-command-center";
 import { ConfirmActionDialog } from "@/components/app/confirm-action";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ type CreatorAction = {
   name: string;
   handle: string;
   stage: PipelineStage;
+  exactStep: ExactStepValue | null;
   nextAction: string | null;
   tier?: "TIER_1" | "TIER_2" | "TIER_3" | "TIER_4" | null;
   bossApprovalStatus: BossApprovalStatus | null;

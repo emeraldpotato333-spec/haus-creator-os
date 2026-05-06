@@ -5,6 +5,7 @@ import { PageHeading } from "@/components/app/page-heading";
 import { CommandCenterClient } from "@/components/dashboard/command-center-client";
 import { Button } from "@/components/ui/button";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { getLegacyExactStepFromStage, isExactStepValue } from "@/lib/creator-command-center";
 import { isPrismaSchemaDriftError } from "@/lib/prisma-compat";
 import { getPrisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
@@ -43,6 +44,7 @@ async function loadDashboardData() {
         projectType: true,
         collabAngle: true,
         tier: true,
+        exactStep: true,
         nextAction: true,
         bossApprovalNeeded: true,
         bossApprovalStatus: true,
@@ -59,6 +61,9 @@ async function loadDashboardData() {
       creators: creators.map((creator) => ({
         ...creator,
         collabAngle: creator.collabAngle ?? creator.whyFit ?? null,
+        exactStep: isExactStepValue(creator.exactStep)
+          ? creator.exactStep
+          : getLegacyExactStepFromStage(creator.stage, creator.nextAction ?? creator.whyFit ?? null, creator.tier),
       })),
       notices: [] as string[],
     };
@@ -69,7 +74,7 @@ async function loadDashboardData() {
         const creators = await loadLegacyDashboardCreators(prisma);
         return {
           creators,
-          notices: ["Dashboard loaded in compatibility mode. Run Prisma migrations so the command center fields are available."],
+          notices: ["Dashboard is using the legacy preview schema. Run the additive Creator Command Center migrations for tiers, exact steps, approvals, and asset statuses."],
         };
       } catch (legacyError) {
         console.error("[HAUS Creator OS dashboard]", {
@@ -111,6 +116,7 @@ async function loadLegacyDashboardCreators(prisma: PrismaClient) {
     projectType: null,
     collabAngle: creator.whyFit ?? null,
     tier: null,
+    exactStep: getLegacyExactStepFromStage(creator.stage, creator.nextAction ?? creator.whyFit ?? null, null),
     bossApprovalNeeded: null,
     bossApprovalStatus: null,
     sampleStatus: null,

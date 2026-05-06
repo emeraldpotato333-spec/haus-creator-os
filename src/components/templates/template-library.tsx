@@ -40,11 +40,25 @@ const templateGroups: Record<string, { eyebrow: string; note: string }> = {
     eyebrow: "Brief",
     note: "Do not brief before yes. Surface this only after there is real commitment.",
   },
+  "Usage rights checklist": {
+    eyebrow: "Rights",
+    note: "Use before any paid spend or broad proof usage.",
+  },
+  "Proof / Ad Review Checklist": {
+    eyebrow: "Asset",
+    note: "Use when content is in and you need to decide proof library versus ad readiness.",
+  },
 };
 
-export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) {
+export function TemplateLibrary({
+  templates,
+  initialSelectedId,
+}: {
+  templates: TemplateRecord[];
+  initialSelectedId?: string;
+}) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState(templates[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(initialSelectedId || templates[0]?.id || "");
   const [drafts, setDrafts] = useState<Record<string, TemplateRecord>>(Object.fromEntries(templates.map((item) => [item.id, item])));
   const [isPending, startTransition] = useTransition();
   const selected = drafts[selectedId] ?? templates[0];

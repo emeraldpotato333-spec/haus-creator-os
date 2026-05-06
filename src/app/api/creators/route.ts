@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
+import { getSuggestedExactStepForTier, getSuggestedNextAction, getWorkflowPatchForExactStep, isExactStepValue } from "@/lib/creator-command-center";
 import { getPrisma } from "@/lib/prisma";
 import { isPrismaSchemaDriftError } from "@/lib/prisma-compat";
 import { creatorInputSchema, withOverallScore } from "@/lib/validators";
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsed = withOverallScore(parsedResult.data);
+  const parsed = withOverallScore(applyWorkflowDefaults(parsedResult.data));
 
   try {
     const creator = await createCreator(prisma, parsed);
@@ -221,6 +222,25 @@ async function createCreatorAddedInteraction(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function applyWorkflowDefaults(data: ReturnType<typeof creatorInputSchema.parse>) {
+  const exactStep = data.exactStep && isExactStepValue(data.exactStep)
+    ? data.exactStep
+    : getSuggestedExactStepForTier(data.tier ?? null);
+  const workflowPatch = exactStep ? getWorkflowPatchForExactStep(exactStep) : null;
+
+  return {
+    ...data,
+    ...workflowPatch,
+    nextAction:
+      data.nextAction ??
+      workflowPatch?.nextAction ??
+      getSuggestedNextAction(data.tier ?? null) ??
+      null,
+    bossApprovalNeeded:
+      data.bossApprovalNeeded ?? (data.tier === "TIER_1" ? true : data.tier ? false : null),
+  };
 }
 
 function getCreateErrorMessage(error: unknown) {
