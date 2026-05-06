@@ -2,19 +2,39 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { DndContext, DragEndEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { useDraggable } from "@dnd-kit/core";
 import { ArrowRight, GripVertical, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmActionDialog } from "@/components/app/confirm-action";
+import {
+  describeCurrentStatus,
+  ExactStepValue,
+  EXACT_STEP_OPTIONS_BY_LANE,
+  getDefaultExactStepForLane,
+  getExactStepLabel,
+  getExactStepTemplateName,
+  getGroupedPipelineLane,
+  getLegacyExactStepFromStage,
+  getQuickAction,
+  getTierShortLabel,
+  isExactStepValue,
+  WORKFLOW_LANES,
+} from "@/lib/creator-command-center";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CreatorAvatar, PriorityBadge, StageBadge } from "@/components/creators/creator-identity";
-import { PIPELINE_STAGES } from "@/lib/domain";
-import { getGroupedPipelineLane, getTierShortLabel, GROUPED_PIPELINE_LANES } from "@/lib/creator-command-center";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CreatorAvatar, PriorityBadge } from "@/components/creators/creator-identity";
 import { cn } from "@/lib/utils";
 
 type PipelineCreator = {
@@ -22,49 +42,48 @@ type PipelineCreator = {
   name: string;
   handle: string;
   platform: string;
-  stage: (typeof PIPELINE_STAGES)[number]["value"];
+  stage: "SOURCED" | "VETTED" | "INVITED" | "REPLIED" | "QUALIFIED" | "SAMPLE_SENT" | "BRIEF_SENT" | "CONTENT_LIVE" | "EVALUATED" | "EXPANDED" | "AMBASSADOR";
   overallScore: number;
-  profileImageUrl?: string | null;
-  niche?: string | null;
-  nextAction?: string | null;
-  projectType?: string | null;
-  collabAngle?: string | null;
-  tier?: "TIER_1" | "TIER_2" | "TIER_3" | "TIER_4" | null;
+  profileImageUrl: string | null;
+  niche: string | null;
+  nextAction: string | null;
+  projectType: string | null;
+  collabAngle: string | null;
+  tier: "TIER_1" | "TIER_2" | "TIER_3" | "TIER_4" | null;
+  exactStep: string | null;
+  bossApprovalStatus: "NEEDS_APPROVAL" | "WAITING" | "APPROVED" | "DECLINED" | null;
+  sampleStatus: "PENDING" | "SENT" | "DELIVERED" | null;
+  briefStatus: "DRAFT" | "SENT" | "ACCEPTED" | null;
+  usageRightsStatus: "PENDING" | "CONFIRMED" | null;
+  adPotential: "LOW" | "MEDIUM" | "HIGH" | null;
   tags: string[];
   priority: "LOW" | "MEDIUM" | "HIGH";
 };
 
 export function PipelineBoard({ creators }: { creators: PipelineCreator[] }) {
-  const [items, setItems] = useState(creators);
+  const [items, setItems] = useState(creators.map(normalizeCreator));
   const [deleteTarget, setDeleteTarget] = useState<PipelineCreator | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const byStage = useMemo(
+  const byLane = useMemo(
     () =>
       Object.fromEntries(
-        GROUPED_PIPELINE_LANES.map((lane) => [lane.id, items.filter((creator) => getGroupedPipelineLane(creator.stage) === lane.id)]),
-      ) as Record<(typeof GROUPED_PIPELINE_LANES)[number]["id"], PipelineCreator[]>,
+        WORKFLOW_LANES.map((lane) => [lane.id, items.filter((creator) => getGroupedPipelineLane(creator.stage, creator.exactStep) === lane.id)]),
+      ) as Record<(typeof WORKFLOW_LANES)[number]["id"], ReturnType<typeof normalizeCreator>[]>,
     [items],
   );
 
   async function onDragEnd(event: DragEndEvent) {
     const creatorId = String(event.active.id);
-    const nextLane = event.over?.id as (typeof GROUPED_PIPELINE_LANES)[number]["id"] | undefined;
+    const lane = event.over?.id as (typeof WORKFLOW_LANES)[number]["id"] | undefined;
     const creator = items.find((item) => item.id === creatorId);
 
-    if (!creator || !nextLane) {
+    if (!creator || !lane) {
       return;
     }
 
-    const lane = GROUPED_PIPELINE_LANES.find((entry) => entry.id === nextLane);
-    const nextStage = lane?.stages[0];
-
-    if (!nextStage || creator.stage === nextStage) {
-      return;
-    }
-
-    setItems((current) => current.map((item) => (item.id === creatorId ? { ...item, stage: nextStage } : item)));
-    await persistStageChange(creatorId, nextStage, creators, setItems);
+    const exactStep = getDefaultExactStepForLane(lane, creator);
+    await persistWorkflowChange(creator.id, { lane, exactStep }, items, setItems);
   }
 
   async function deleteCreator() {
@@ -83,19 +102,19 @@ export function PipelineBoard({ creators }: { creators: PipelineCreator[] }) {
     toast.success("Creator deleted.");
   }
 
-  async function setCreatorStage(creatorId: string, stage: PipelineCreator["stage"]) {
-    setItems((current) => current.map((item) => (item.id === creatorId ? { ...item, stage } : item)));
-    await persistStageChange(creatorId, stage, creators, setItems);
-  }
-
   return (
     <>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="grid gap-4 xl:grid-cols-4">
-          {GROUPED_PIPELINE_LANES.map((lane) => (
-            <PipelineColumn key={lane.id} id={lane.id} label={lane.label} note={lane.note} count={byStage[lane.id].length} stages={lane.stages}>
-              {byStage[lane.id].map((creator) => (
-                <PipelineCard key={creator.id} creator={creator} onDelete={() => setDeleteTarget(creator)} onSetStage={setCreatorStage} />
+          {WORKFLOW_LANES.map((lane) => (
+            <PipelineColumn key={lane.id} id={lane.id} label={lane.label} note={lane.note} count={byLane[lane.id].length}>
+              {byLane[lane.id].map((creator) => (
+                <PipelineCard
+                  key={creator.id}
+                  creator={creator}
+                  onDelete={() => setDeleteTarget(creator)}
+                  onChangeExactStep={(exactStep) => persistWorkflowChange(creator.id, { exactStep }, items, setItems)}
+                />
               ))}
             </PipelineColumn>
           ))}
@@ -118,29 +137,35 @@ function PipelineColumn({
   label,
   note,
   count,
-  stages,
   children,
 }: {
-  id: (typeof GROUPED_PIPELINE_LANES)[number]["id"];
+  id: (typeof WORKFLOW_LANES)[number]["id"];
   label: string;
   note: string;
   count: number;
-  stages: PipelineCreator["stage"][];
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const laneSteps = EXACT_STEP_OPTIONS_BY_LANE.find((lane) => lane.id === id)?.steps ?? [];
 
   return (
-    <section ref={setNodeRef} className={cn("min-h-[66vh] rounded-2xl border bg-muted/35 p-3", isOver && "border-ring bg-accent/30")}>
-      <div className="mb-3 flex items-center justify-between">
-        <div>
+    <section
+      ref={setNodeRef}
+      className={cn("min-h-[66vh] rounded-2xl border bg-muted/35 p-3", isOver && "border-ring bg-accent/20")}
+    >
+      <div className="mb-3">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-medium">{label}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{note}</div>
-          <div className="mt-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-            {stages.map((stage) => PIPELINE_STAGES.find((item) => item.value === stage)?.label ?? stage).join(" · ")}
-          </div>
+          <Badge variant="outline">{count}</Badge>
         </div>
-        <Badge variant="outline">{count}</Badge>
+        <div className="mt-1 text-xs text-muted-foreground">{note}</div>
+        <div className="mt-3 flex flex-wrap gap-1">
+          {laneSteps.map((step) => (
+            <Badge key={step.value} variant="secondary" className="bg-background/60 text-muted-foreground">
+              {step.label}
+            </Badge>
+          ))}
+        </div>
       </div>
       <div className="grid gap-3">{children}</div>
     </section>
@@ -150,22 +175,19 @@ function PipelineColumn({
 function PipelineCard({
   creator,
   onDelete,
-  onSetStage,
+  onChangeExactStep,
 }: {
-  creator: PipelineCreator;
+  creator: ReturnType<typeof normalizeCreator>;
   onDelete: () => void;
-  onSetStage: (creatorId: string, stage: PipelineCreator["stage"]) => void;
+  onChangeExactStep: (exactStep: ExactStepValue) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: creator.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
-  const lane = GROUPED_PIPELINE_LANES.find((entry) => entry.id === getGroupedPipelineLane(creator.stage)) ?? GROUPED_PIPELINE_LANES[0];
+  const templateName = getExactStepTemplateName(creator.exactStep);
+  const quickAction = getQuickAction(creator.exactStep);
 
   return (
-    <Card
-      ref={setNodeRef}
-      style={style}
-      className={cn("rounded-xl shadow-sm transition-colors hover:bg-accent/25", isDragging && "opacity-60")}
-    >
+    <Card ref={setNodeRef} style={style} className={cn("rounded-xl shadow-sm transition-colors hover:bg-accent/15", isDragging && "opacity-60")}>
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-2">
           <Link href={`/creators/${creator.id}`} className="block min-w-0 flex-1">
@@ -200,6 +222,7 @@ function PipelineCard({
             </Button>
           </div>
         </div>
+
         <div className="mt-3 flex flex-wrap gap-1.5">
           <Badge variant="secondary" className="bg-muted text-foreground">
             {getTierShortLabel(creator.tier)}
@@ -207,34 +230,65 @@ function PipelineCard({
           <PriorityBadge priority={creator.priority} />
           {creator.projectType ? <Badge variant="outline">{creator.projectType}</Badge> : null}
         </div>
+
+        <div className="mt-3 text-sm text-muted-foreground">
+          {creator.collabAngle || creator.nextAction || "Every creator should have one clear next action."}
+        </div>
+
         <div className="mt-3 grid gap-3">
-          <div className="line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {creator.nextAction || creator.collabAngle || "Set the next action"}
-          </div>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Exact step</div>
-              <Select value={creator.stage} onValueChange={(value) => onSetStage(creator.id, value as PipelineCreator["stage"])}>
-                <SelectTrigger className="mt-1 w-full">
-                  <SelectValue />
+              <Select value={creator.exactStep ?? ""} onValueChange={(value) => value && onChangeExactStep(value as ExactStepValue)}>
+                <SelectTrigger size="sm" className="mt-1 w-full">
+                  <SelectValue placeholder="Choose exact step" />
                 </SelectTrigger>
-                <SelectContent>
-                  {lane.stages.map((stage) => (
-                    <SelectItem key={stage} value={stage}>
-                      {PIPELINE_STAGES.find((item) => item.value === stage)?.label ?? stage}
-                    </SelectItem>
+                <SelectContent align="start">
+                  {EXACT_STEP_OPTIONS_BY_LANE.map((lane, index) => (
+                    <div key={lane.id}>
+                      <SelectGroup>
+                        <SelectLabel>{lane.label}</SelectLabel>
+                        {lane.steps.map((step) => (
+                          <SelectItem key={step.value} value={step.value}>
+                            {step.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      {index < EXACT_STEP_OPTIONS_BY_LANE.length - 1 ? <SelectSeparator /> : null}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="shrink-0 pl-3 text-right">
+            <div className="shrink-0 text-right">
               <div className="font-mono text-lg">{creator.overallScore.toFixed(1)}</div>
               <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">fit</div>
             </div>
           </div>
+
+          <div className="rounded-xl border border-border/70 bg-background/55 px-3 py-2 text-sm">
+            {getExactStepLabel(creator.exactStep)}
+          </div>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <StageBadge stage={creator.stage} />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          {templateName ? (
+            <Button size="sm" variant="outline" render={<Link href={`/templates?template=${encodeURIComponent(templateName)}`} />}>
+              Open matching template
+            </Button>
+          ) : null}
+          <Button size="sm" variant="ghost" render={<Link href={`/creators/${creator.id}`} />}>
+            Open creator
+          </Button>
+          {quickAction ? (
+            <Button size="sm" variant="outline" onClick={() => onChangeExactStep(quickAction.exactStep)}>
+              {quickAction.label}
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+          <span>{describeCurrentStatus(creator.stage, creator.exactStep)}</span>
           <Link href={`/creators/${creator.id}`} className="inline-flex items-center gap-1 hover:text-foreground">
             Open creator <ArrowRight className="size-3" />
           </Link>
@@ -244,27 +298,64 @@ function PipelineCard({
   );
 }
 
-async function persistStageChange(
+async function persistWorkflowChange(
   creatorId: string,
-  nextStage: PipelineCreator["stage"],
-  creators: PipelineCreator[],
-  setItems: React.Dispatch<React.SetStateAction<PipelineCreator[]>>,
+  payload: { exactStep?: ExactStepValue; lane?: (typeof WORKFLOW_LANES)[number]["id"] },
+  currentItems: ReturnType<typeof normalizeCreator>[],
+  setItems: React.Dispatch<React.SetStateAction<ReturnType<typeof normalizeCreator>[]>>,
 ) {
-  const response = await fetch(`/api/creators/${creatorId}/stage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stage: nextStage }),
-  });
+  const current = currentItems.find((item) => item.id === creatorId);
 
-  if (!response.ok) {
-    setItems(creators);
-    toast.error("Stage update failed.");
+  if (!current) {
     return;
   }
 
-  const result = await response.json();
-  toast.success(result.task ? `Moved and created: ${result.task.title}` : "Stage updated.");
-  if (result.suggestion) {
-    toast.message(`Suggested next stage: ${result.suggestion}`);
+  const optimisticExactStep = payload.exactStep ?? getDefaultExactStepForLane(payload.lane ?? getGroupedPipelineLane(current.stage, current.exactStep), current);
+  const response = await fetch(`/api/creators/${creatorId}/stage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      exactStep: optimisticExactStep,
+      lane: payload.lane,
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    toast.error(result?.error ?? "Stage update failed.");
+    return;
   }
+
+  setItems((items) =>
+    items.map((creator) =>
+      creator.id === creatorId
+        ? normalizeCreator({
+            ...creator,
+            stage: result?.creator?.stage ?? creator.stage,
+            exactStep: result?.exactStep ?? optimisticExactStep,
+            nextAction: result?.creator?.nextAction ?? creator.nextAction,
+            bossApprovalStatus: result?.creator?.bossApprovalStatus ?? creator.bossApprovalStatus,
+            sampleStatus: result?.creator?.sampleStatus ?? creator.sampleStatus,
+            briefStatus: result?.creator?.briefStatus ?? creator.briefStatus,
+            usageRightsStatus: result?.creator?.usageRightsStatus ?? creator.usageRightsStatus,
+            adPotential: result?.creator?.adPotential ?? creator.adPotential,
+          })
+        : creator,
+    ),
+  );
+
+  toast.success("Workflow updated.");
+  if (result?.schemaWarning) {
+    toast.message(result.schemaWarning);
+  }
+}
+
+function normalizeCreator(creator: PipelineCreator) {
+  return {
+    ...creator,
+    exactStep: isExactStepValue(creator.exactStep)
+      ? creator.exactStep
+      : getLegacyExactStepFromStage(creator.stage, creator.nextAction, creator.tier ?? null),
+  };
 }

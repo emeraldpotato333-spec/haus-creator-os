@@ -2,6 +2,7 @@ import { PageHeading } from "@/components/app/page-heading";
 import { RuntimeNotice } from "@/components/app/runtime-notice";
 import { CreatorsClient } from "@/components/creators/creators-client";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { getLegacyExactStepFromStage } from "@/lib/creator-command-center";
 import { getPrismaPageNotice, isPrismaSchemaDriftError, logPrismaPageError } from "@/lib/prisma-compat";
 import { getPrisma } from "@/lib/prisma";
 import { serialize } from "@/lib/serialize";
@@ -13,7 +14,7 @@ export default async function CreatorsPage() {
 
   return (
     <>
-      <PageHeading eyebrow="Recruitment" title="Creators" />
+      <PageHeading eyebrow="Working worksheet" title="Lead Tracker" />
       <RuntimeNotice notices={notices} />
       <CreatorsClient creators={serialize(creators)} />
     </>
@@ -36,17 +37,20 @@ async function loadCreatorsPageData() {
         stage: true,
         priority: true,
         projectType: true,
+        collabAngle: true,
         tier: true,
+        exactStep: true,
+        bossApprovalNeeded: true,
+        bossApprovalStatus: true,
+        sampleStatus: true,
+        briefStatus: true,
+        usageRightsStatus: true,
+        adPotential: true,
+        isTodayFocus: true,
+        todayFocusRank: true,
         tags: true,
         nextAction: true,
         overallScore: true,
-        tasks: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-          },
-        },
       },
     });
 
@@ -59,7 +63,7 @@ async function loadCreatorsPageData() {
         const creators = await loadLegacyCreators(prisma);
         return {
           creators,
-          notices: ["Creators loaded in compatibility mode. Run Prisma migrations so the latest creator fields are available."],
+          notices: ["Lead Tracker is using the legacy preview schema. Run the additive Creator Command Center migrations for exact steps, tiers, approvals, and asset statuses."],
         };
       } catch (legacyError) {
         logPrismaPageError("creators.legacy", legacyError);
@@ -84,16 +88,10 @@ async function loadLegacyCreators(prisma: PrismaClient) {
       niche: true,
       stage: true,
       priority: true,
-      tags: true,
       whyFit: true,
       overallScore: true,
-      tasks: {
-        select: {
-          id: true,
-          title: true,
-          status: true,
-        },
-      },
+      tags: true,
+      nextAction: true,
     },
   });
 
@@ -101,7 +99,17 @@ async function loadLegacyCreators(prisma: PrismaClient) {
     ...creator,
     profileImageUrl: null,
     projectType: null,
+    collabAngle: creator.whyFit ?? null,
     tier: null,
-    nextAction: creator.whyFit || null,
+    exactStep: getLegacyExactStepFromStage(creator.stage, creator.nextAction ?? creator.whyFit ?? null, null),
+    bossApprovalNeeded: null,
+    bossApprovalStatus: null,
+    sampleStatus: null,
+    briefStatus: null,
+    usageRightsStatus: null,
+    adPotential: null,
+    isTodayFocus: false,
+    todayFocusRank: null,
+    nextAction: creator.nextAction ?? creator.whyFit ?? null,
   }));
 }

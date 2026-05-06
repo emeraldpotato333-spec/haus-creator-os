@@ -116,6 +116,7 @@ model Creator {
   collabAngle        String?
   proposedOffer      String?
   tier               CreatorTier?
+  exactStep          String?
   nextAction         String?
   bossApprovalNeeded Boolean?
   bossApprovalStatus BossApprovalStatus?
@@ -160,6 +161,7 @@ model Creator {
   linkedTemplates    CreatorTemplate[]
 
   @@index([stage])
+  @@index([exactStep])
   @@index([tier])
   @@index([isTodayFocus, todayFocusRank])
   @@index([updatedAt])

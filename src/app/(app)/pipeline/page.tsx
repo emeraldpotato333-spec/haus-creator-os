@@ -41,6 +41,12 @@ async function loadPipelineData() {
         projectType: true,
         collabAngle: true,
         tier: true,
+        exactStep: true,
+        bossApprovalStatus: true,
+        sampleStatus: true,
+        briefStatus: true,
+        usageRightsStatus: true,
+        adPotential: true,
         tags: true,
         priority: true,
       },
@@ -55,7 +61,7 @@ async function loadPipelineData() {
         const creators = await loadLegacyPipelineCreators(prisma);
         return {
           creators,
-          notices: ["Pipeline loaded in compatibility mode. Run Prisma migrations so the latest creator fields are available."],
+          notices: ["Pipeline is using the legacy preview schema. The additive Creator Command Center migrations are required for exact steps, tiers, approvals, and asset statuses."],
         };
       } catch (legacyError) {
         logPrismaPageError("pipeline.legacy", legacyError);
@@ -93,5 +99,11 @@ async function loadLegacyPipelineCreators(prisma: PrismaClient) {
     projectType: null,
     collabAngle: creator.whyFit || null,
     tier: null,
+    exactStep: null,
+    bossApprovalStatus: null,
+    sampleStatus: null,
+    briefStatus: null,
+    usageRightsStatus: null,
+    adPotential: null,
   }));
 }
