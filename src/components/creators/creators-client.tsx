@@ -14,7 +14,9 @@ import {
   CreatorAvatar,
   PriorityBadge,
   StageBadge,
+  ScorePill,
 } from "@/components/creators/creator-identity";
+import { getTierShortLabel } from "@/lib/creator-command-center";
 import { PIPELINE_STAGES } from "@/lib/domain";
 
 type CreatorListItem = {
@@ -26,6 +28,8 @@ type CreatorListItem = {
   niche?: string | null;
   stage: (typeof PIPELINE_STAGES)[number]["value"];
   priority: "LOW" | "MEDIUM" | "HIGH";
+  projectType?: string | null;
+  tier?: "TIER_1" | "TIER_2" | "TIER_3" | "TIER_4" | null;
   tags: string[];
   nextAction?: string | null;
   overallScore: number;
@@ -171,6 +175,10 @@ export function CreatorsClient({ creators }: { creators: CreatorListItem[] }) {
         </label>
       </div>
 
+      <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+        The full database lives here. If the system feels noisy, classify leads first on <Link href="/dashboard" className="text-foreground underline underline-offset-4">Dashboard</Link>.
+      </div>
+
       <div className="grid gap-3">
         {filtered.map((creator) => {
           const nextAction = creator.nextAction || creator.tasks.find((task) => task.status !== "DONE")?.title || "Set the next action";
@@ -191,6 +199,10 @@ export function CreatorsClient({ creators }: { creators: CreatorListItem[] }) {
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         <StageBadge stage={creator.stage} />
                         <PriorityBadge priority={creator.priority} />
+                        <Badge variant="secondary" className="bg-muted text-foreground">
+                          {getTierShortLabel(creator.tier)}
+                        </Badge>
+                        {creator.projectType ? <Badge variant="outline">{creator.projectType}</Badge> : null}
                         {creator.tags.slice(0, 3).map((tag) => (
                           <Badge key={tag} variant="secondary" className="bg-muted text-foreground">
                             {tag}
@@ -209,8 +221,7 @@ export function CreatorsClient({ creators }: { creators: CreatorListItem[] }) {
 
                 <div className="flex items-center justify-between gap-4 md:flex-col md:items-end">
                   <div className="text-right">
-                    <div className="font-mono text-2xl">{creator.overallScore.toFixed(1)}</div>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">fit score</div>
+                    <ScorePill score={creator.overallScore} />
                   </div>
                   <Button
                     variant="ghost"

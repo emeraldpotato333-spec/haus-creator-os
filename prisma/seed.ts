@@ -17,150 +17,68 @@ const prisma = new PrismaClient({
 
 const templates = [
   {
-    name: "HAUS Master Creator Brief",
-    category: "BRIEF",
-    subject: "HAUS creator brief: editorial tile story",
-    body: `Create a calm, editorial story around HAUS artisan tile as a material with provenance, texture, and permanence.
-
-Core message:
-- HAUS tile is handmade, architectural, and quietly luxurious.
-- The story should feel collected, lived-in, and design-literate.
-- Show texture, scale, installation context, and how the material changes a room.`,
-    variables: ["creator_name", "sample_name", "deadline", "deliverables"],
+    name: "Tier 1 Boss Approval Packet",
+    category: "OFFER",
+    subject: "HAUS approval packet: {{creator_name}}",
+    body: `Creator:
+Project:
+Why they matter:
+Proposed HAUS contribution:
+Expected deliverables:
+Estimated product / freight / cash cost:
+Why this is worth it:
+Approval needed by:`,
+    variables: ["creator_name", "project_name", "approval_deadline"],
   },
   {
-    name: "HAUS Brand Positioning Brief",
-    category: "BRIEF",
-    subject: "How to speak about HAUS",
-    body: `HAUS sits at the intersection of interiors, craft, and architectural surfaces.
-
-Voice:
-- precise
-- warm
-- restrained
-- tactile
-- design-forward`,
-    variables: ["product_line", "room_context"],
-  },
-  {
-    name: "HAUS Outreach Template - Micro Creator",
-    category: "OUTREACH",
-    subject: "A small HAUS idea for {{creator_name}}",
-    body: `Hi {{creator_name}},
-
-I came across your work and loved how you frame interiors with texture and restraint. I help with creator partnerships for HAUS, a luxury artisan tile brand.
-
-Would you be open to a small gifting collaboration around {{product_line}}?`,
-    variables: ["creator_name", "product_line"],
-  },
-  {
-    name: "HAUS Outreach Template - Mid Tier",
+    name: "Tier 2 Personalized Collab Email",
     category: "OUTREACH",
     subject: "HAUS x {{creator_name}}",
     body: `Hi {{creator_name}},
 
-Your interiors content has the kind of lived-in polish that feels very aligned with HAUS.
+I’ve been following your {{project_type}} project and the way you handle {{collab_angle}} feels especially aligned with HAUS.
 
-Would you be open to reviewing a collaboration outline this week?`,
-    variables: ["creator_name"],
+We make artisan tile and architectural surfaces that work best when the story feels tactile, thoughtful, and specific to the space.
+
+I’d love to explore a simple collaboration around {{tile_interest}} and see if there’s a fit for your project.
+
+Would you be open to discussing it?`,
+    variables: ["creator_name", "project_type", "collab_angle", "tile_interest"],
   },
   {
-    name: "HAUS Outreach Template - Authority / Designer",
+    name: "Tier 3 UGC Paid Ads Inquiry",
     category: "OUTREACH",
-    subject: "A trade-minded HAUS collaboration",
+    subject: "UGC concept for HAUS",
     body: `Hi {{creator_name}},
 
-HAUS is building thoughtful relationships with designers and interiors voices who can speak to materiality with real authority.`,
+I came across your work and liked how natural your camera presence feels.
+
+This would mainly be for paid ad content rather than requiring an organic post.
+
+Would you be open to sharing your rate for a small package of raw UGC-style videos for HAUS, with possible sample or tile shipment?
+
+If helpful, we can keep the brief simple and work from a clean shot list.`,
     variables: ["creator_name"],
   },
   {
-    name: "HAUS Outreach Template - UGC Creator",
-    category: "OUTREACH",
-    subject: "UGC concept for HAUS tile",
-    body: `Hi {{creator_name}},
-
-We are sourcing polished UGC creators for HAUS, a luxury artisan tile brand.
-
-Would you be open to sharing rates for a short-form video package with usage rights?`,
-    variables: ["creator_name"],
-  },
-  {
-    name: "Follow-Up 1",
-    category: "FOLLOW_UP",
-    subject: "Following up on HAUS",
-    body: `Hi {{creator_name}},
-
-Just floating this back up. I think your eye for interiors could be a strong fit for HAUS.`,
-    variables: ["creator_name", "product_line"],
-  },
-  {
-    name: "Follow-Up 2",
-    category: "FOLLOW_UP",
-    subject: "Closing the loop",
-    body: `Hi {{creator_name}},
-
-Closing the loop for now, but I wanted to say I still think there is a thoughtful HAUS fit here.`,
-    variables: ["creator_name"],
-  },
-  {
-    name: "Sample / Gifting Brief",
+    name: "Brief After Yes",
     category: "BRIEF",
-    subject: "HAUS sample details",
-    body: `Sample focus: {{sample_name}}
+    subject: "HAUS brief: {{creator_name}}",
+    body: `Creative direction:
 
-Please capture:
-- unboxing or first look
-- close detail of texture and edge
-- one styled interior moment`,
-    variables: ["sample_name"],
-  },
-  {
-    name: "Affiliate Offer Template",
-    category: "OFFER",
-    subject: "HAUS affiliate offer",
-    body: `Hi {{creator_name}},
+Tile / material focus:
 
-Based on the fit, we would like to offer an affiliate structure for HAUS:
-- Code: {{affiliate_code}}
-- Commission: {{commission}}`,
-    variables: ["creator_name", "affiliate_code", "commission"],
-  },
-  {
-    name: "Paid Collaboration Brief",
-    category: "OFFER",
-    subject: "Paid HAUS collaboration brief",
-    body: `Scope:
-- {{deliverables}}
-- Timeline: {{timeline}}
-- Usage: {{usage_terms}}
-- Rate: {{rate}}`,
-    variables: ["deliverables", "timeline", "usage_terms", "rate"],
-  },
-  {
-    name: "Usage Rights Request",
-    category: "RIGHTS",
-    subject: "Usage rights for HAUS content",
-    body: `Hi {{creator_name}},
+Story angle:
 
-We would love to license select HAUS content from your collaboration.`,
-    variables: ["creator_name", "usage_window"],
-  },
-  {
-    name: "Ambassador Expansion Template",
-    category: "OFFER",
-    subject: "Expanding the HAUS partnership",
-    body: `Hi {{creator_name}},
+Shot list:
 
-Your HAUS content performed beautifully and felt deeply aligned with the brand.`,
-    variables: ["creator_name"],
-  },
-  {
-    name: "Soft Nurture Template",
-    category: "NURTURE",
-    subject: "A HAUS note for later",
-    body: `Hi {{creator_name}},
+Deliverables:
 
-No pressure on timing. I am keeping you on my HAUS shortlist.`,
+Timeline:
+
+Usage rights:
+
+Posting / ad usage notes:`,
     variables: ["creator_name"],
   },
 ] as const;

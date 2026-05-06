@@ -23,6 +23,24 @@ type TemplateRecord = {
 };
 
 const categories: TemplateRecord["category"][] = ["OUTREACH", "FOLLOW_UP", "BRIEF", "OFFER", "RIGHTS", "NURTURE"];
+const templateGroups: Record<string, { eyebrow: string; note: string }> = {
+  "Tier 1 Boss Approval Packet": {
+    eyebrow: "Approve",
+    note: "Use when the creator is strong enough that product support needs a real internal decision.",
+  },
+  "Tier 2 Personalized Collab Email": {
+    eyebrow: "Offer",
+    note: "Personal, warm, and specific. Keep the ask light.",
+  },
+  "Tier 3 UGC Paid Ads Inquiry": {
+    eyebrow: "Offer",
+    note: "Lead with paid ad asset clarity rather than organic reach.",
+  },
+  "Brief After Yes": {
+    eyebrow: "Brief",
+    note: "Do not brief before yes. Surface this only after there is real commitment.",
+  },
+};
 
 export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) {
   const router = useRouter();
@@ -30,6 +48,17 @@ export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) 
   const [drafts, setDrafts] = useState<Record<string, TemplateRecord>>(Object.fromEntries(templates.map((item) => [item.id, item])));
   const [isPending, startTransition] = useTransition();
   const selected = drafts[selectedId] ?? templates[0];
+  const orderedTemplates = templates
+    .slice()
+    .sort((left, right) => {
+      const leftRank = Object.keys(templateGroups).indexOf(left.name);
+      const rightRank = Object.keys(templateGroups).indexOf(right.name);
+
+      if (leftRank === -1 && rightRank === -1) return left.name.localeCompare(right.name);
+      if (leftRank === -1) return 1;
+      if (rightRank === -1) return -1;
+      return leftRank - rightRank;
+    });
 
   function update<K extends keyof TemplateRecord>(key: K, value: TemplateRecord[K]) {
     setDrafts((current) => ({
@@ -74,6 +103,8 @@ export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) 
     });
   }
 
+  const selectedGuide = selected ? templateGroups[selected.name] : null;
+
   if (!selected) {
     return (
       <div className="rounded-md border border-dashed p-12 text-center text-muted-foreground">
@@ -85,11 +116,17 @@ export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) 
   return (
     <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
       <div className="grid h-fit gap-2">
+        <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+          Keep templates lightweight. Do not overwork the system before the creator says yes.
+        </div>
         <Button variant="outline" onClick={createTemplate} disabled={isPending}>
           <Plus />
           New template
         </Button>
-        {templates.map((template) => (
+        {orderedTemplates.map((template) => {
+          const guide = templateGroups[template.name];
+
+          return (
           <button
             key={template.id}
             onClick={() => setSelectedId(template.id)}
@@ -99,13 +136,22 @@ export function TemplateLibrary({ templates }: { templates: TemplateRecord[] }) 
               <div className="font-medium">{template.name}</div>
               {template.isStarter ? <Badge variant="secondary">Starter</Badge> : null}
             </div>
-            <div className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">{template.category.replace("_", " ")}</div>
+            <div className="mt-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              {guide?.eyebrow ?? template.category.replace("_", " ")}
+            </div>
+            <div className="mt-2 text-sm text-muted-foreground">{guide?.note ?? "Reusable working language."}</div>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <Card className="haus-panel">
         <CardContent className="grid gap-4 p-5">
+          {selectedGuide ? (
+            <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-sm text-muted-foreground">
+              {selectedGuide.note}
+            </div>
+          ) : null}
           <div className="grid gap-2">
             <Input value={selected.name} onChange={(event) => update("name", event.target.value)} className="h-11 text-xl font-semibold" />
           </div>

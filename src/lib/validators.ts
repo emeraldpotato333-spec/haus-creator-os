@@ -32,6 +32,22 @@ const nullableNumber = z.preprocess(
   z.coerce.number().nonnegative().nullable().optional(),
 );
 
+const nullableBoolean = z.preprocess((value) => {
+  if (value === "" || value === undefined) {
+    return null;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return value;
+}, z.boolean().nullable().optional());
+
 const nullableDate = z
   .string()
   .nullable()
@@ -66,6 +82,13 @@ export const pipelineStageSchema = z.enum([
 
 export const prioritySchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
 
+export const creatorTierSchema = z.enum(["TIER_1", "TIER_2", "TIER_3", "TIER_4"]);
+export const bossApprovalStatusSchema = z.enum(["NEEDS_APPROVAL", "WAITING", "APPROVED", "DECLINED"]);
+export const sampleStatusSchema = z.enum(["PENDING", "SENT", "DELIVERED"]);
+export const creatorBriefStatusSchema = z.enum(["DRAFT", "SENT", "ACCEPTED"]);
+export const usageRightsStatusSchema = z.enum(["PENDING", "CONFIRMED"]);
+export const adPotentialSchema = z.enum(["LOW", "MEDIUM", "HIGH"]);
+
 export const creatorInputSchema = z.object({
   name: z.string().trim().min(1),
   handle: z.string().trim().min(1),
@@ -78,7 +101,23 @@ export const creatorInputSchema = z.object({
   source: nullableString,
   audienceSummary: nullableString,
   whyFit: nullableString,
+  projectType: nullableString,
+  projectSize: nullableString,
+  timeline: nullableString,
+  tileInterest: nullableString,
+  collabAngle: nullableString,
+  proposedOffer: nullableString,
+  tier: creatorTierSchema.nullable().optional(),
   nextAction: nullableString,
+  bossApprovalNeeded: nullableBoolean,
+  bossApprovalStatus: bossApprovalStatusSchema.nullable().optional(),
+  sampleStatus: sampleStatusSchema.nullable().optional(),
+  briefStatus: creatorBriefStatusSchema.nullable().optional(),
+  contentDueDate: nullableDate,
+  usageRightsStatus: usageRightsStatusSchema.nullable().optional(),
+  adPotential: adPotentialSchema.nullable().optional(),
+  isTodayFocus: z.boolean().optional().default(false),
+  todayFocusRank: nullableInt,
   notes: optionalString,
   tags: z.array(z.string()).default([]),
   followers: nullableInt,
@@ -111,7 +150,23 @@ export const creatorUpdateSchema = z.object({
   source: updateNullableString,
   audienceSummary: updateNullableString,
   whyFit: updateNullableString,
+  projectType: updateNullableString,
+  projectSize: updateNullableString,
+  timeline: updateNullableString,
+  tileInterest: updateNullableString,
+  collabAngle: updateNullableString,
+  proposedOffer: updateNullableString,
+  tier: creatorTierSchema.nullable().optional(),
   nextAction: updateNullableString,
+  bossApprovalNeeded: nullableBoolean,
+  bossApprovalStatus: bossApprovalStatusSchema.nullable().optional(),
+  sampleStatus: sampleStatusSchema.nullable().optional(),
+  briefStatus: creatorBriefStatusSchema.nullable().optional(),
+  contentDueDate: updateNullableDate,
+  usageRightsStatus: usageRightsStatusSchema.nullable().optional(),
+  adPotential: adPotentialSchema.nullable().optional(),
+  isTodayFocus: z.boolean().optional(),
+  todayFocusRank: nullableInt,
   notes: z.string().optional(),
   tags: z.array(z.string()).optional(),
   followers: nullableInt,

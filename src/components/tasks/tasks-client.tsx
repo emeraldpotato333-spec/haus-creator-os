@@ -5,6 +5,8 @@ import { startOfDay } from "date-fns";
 import { useMemo, useState, useTransition } from "react";
 import { Download, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
+import type { BossApprovalStatus, PipelineStage, SampleStatus } from "@/generated/prisma/client";
+import { getTierShortLabel, isWaiting } from "@/lib/creator-command-center";
 import { ConfirmActionDialog } from "@/components/app/confirm-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,14 +30,37 @@ type CreatorOption = {
   handle?: string;
 };
 
+type CreatorAction = {
+  id: string;
+  name: string;
+  handle: string;
+  stage: PipelineStage;
+  nextAction: string | null;
+  tier?: "TIER_1" | "TIER_2" | "TIER_3" | "TIER_4" | null;
+  bossApprovalStatus: BossApprovalStatus | null;
+  sampleStatus: SampleStatus | null;
+};
+
 type TaskFilter = "OPEN" | "TODAY" | "OVERDUE" | "COMPLETED" | "ALL";
 
-export function TasksClient({ tasks, creators }: { tasks: TaskRecord[]; creators: CreatorOption[] }) {
+export function TasksClient({
+  tasks,
+  creators,
+  creatorActions,
+}: {
+  tasks: TaskRecord[];
+  creators: CreatorOption[];
+  creatorActions: CreatorAction[];
+}) {
   const [items, setItems] = useState(tasks);
   const [isPending, startTransition] = useTransition();
   const [filter, setFilter] = useState<TaskFilter>("OPEN");
   const [deleteTarget, setDeleteTarget] = useState<TaskRecord | null>(null);
   const today = startOfDay(new Date());
+  const visibleCreatorActions = useMemo(
+    () => creatorActions.filter((creator) => !isWaiting(creator)).slice(0, 6),
+    [creatorActions],
+  );
 
   const openTasks = useMemo(() => items.filter((task) => task.status !== "DONE"), [items]);
   const completedTasks = useMemo(() => items.filter((task) => task.status === "DONE"), [items]);
@@ -157,6 +182,34 @@ export function TasksClient({ tasks, creators }: { tasks: TaskRecord[]; creators
 
   return (
     <div className="grid gap-5">
+      <Card className="haus-panel">
+        <CardHeader className="border-b">
+          <CardTitle className="text-base">Actionable creator moves</CardTitle>
+          <div className="text-sm text-muted-foreground">Only next actions belong here. Park the rest.</div>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-4">
+          {visibleCreatorActions.length ? (
+            visibleCreatorActions.map((creator) => (
+              <Link key={creator.id} href={`/creators/${creator.id}`} className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 transition-colors hover:bg-accent/25">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{creator.name}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{creator.nextAction ?? "Set the next action."}</div>
+                  </div>
+                  <Badge variant="secondary" className="bg-muted text-foreground">
+                    {getTierShortLabel(creator.tier)}
+                  </Badge>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+              Clear desk. No creator needs your move right now.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="haus-panel">
         <CardContent className="p-4">
           <form action={addTask} className="grid gap-2 lg:grid-cols-[1fr_220px_160px_150px_auto]">
