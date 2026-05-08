@@ -41,8 +41,8 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
-- name: Check migration status before
-  run: npx prisma migrate status || true
+      - name: Check migration status before
+        run: npx prisma migrate status || true
 
       - name: Apply pending migrations
         run: npx prisma migrate deploy
