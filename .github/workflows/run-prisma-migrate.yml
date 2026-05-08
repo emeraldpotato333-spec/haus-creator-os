@@ -1,0 +1,51 @@
+name: Run Prisma migrations once
+
+on:
+  push:
+    branches:
+      - codex/creator-command-center-ux
+    paths:
+      - ".github/workflows/run-prisma-migrate.yml"
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL || secrets.DATABASE_URL }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          ref: codex/creator-command-center-ux
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Check migration status before
+        run: npx prisma migrate status
+
+      - name: Apply pending migrations
+        run: npx prisma migrate deploy
+
+      - name: Check migration status after
+        run: npx prisma migrate status
