@@ -252,3 +252,31 @@ model AppSettings {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
+
+// Additive workspace records. Existing Creator rows and workflow automations are not changed.
+model HqRecord {
+  id        String    @id
+  creatorId String?
+  data      Json
+  version   Int       @default(1)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  audits    HqAudit[]
+
+  @@index([updatedAt])
+  @@index([creatorId])
+}
+
+model HqAudit {
+  id          String   @id @default(cuid())
+  recordId    String
+  mutationId  String   @unique
+  actor       String
+  requestJson Json
+  beforeJson  Json
+  afterJson   Json
+  createdAt   DateTime @default(now())
+  record      HqRecord @relation(fields: [recordId], references: [id], onDelete: Restrict)
+
+  @@index([recordId, createdAt])
+}

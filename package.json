@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:vercel": "node scripts/prepare-headquarters.mjs && next build",
+    "hq:prepare": "node scripts/prepare-headquarters.mjs",
+    "test:hq": "tsx --test tests/hq*.test.ts tests/hq*.test.mjs",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
