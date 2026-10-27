@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { applyHqChanges, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
+import { applyHqChanges, isCreatorConversation, hqUpdateBatchSchema, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
 import { createHqStore, HqStoreError, isHqConfigured, type HqAuditEntry, type HqRepository, type HqTransaction } from "../src/lib/hq-store";
 
 const fixture = (): HqRecordEnvelope => ({
@@ -175,4 +175,44 @@ test("missing explicit configuration keeps the shared API disabled", () => {
   assert.equal(isHqConfigured({ HQ_ENABLED: "true" }), false);
   assert.equal(isHqConfigured({ HQ_ENABLED: "false", DATABASE_URL: "postgres://example" }), false);
   assert.equal(isHqConfigured({ HQ_ENABLED: "true", DATABASE_URL: "postgres://example" }), true);
+});
+
+
+test("unknown and noncreator inbound never enter the creator conversation gate", () => {
+  const before = fixture().data;
+  assert.equal(before.relationshipType, "unclassified");
+  assert.equal(isCreatorConversation(before), false);
+  for (const relationshipType of ["customer", "trade", "other", "unclassified"] as const) {
+    assert.equal(isCreatorConversation({...before, relationshipType, inboundIntent: "partnership"}), false);
+  }
+  assert.equal(isCreatorConversation({...before, relationshipType: "creator", inboundIntent: "product_question"}), false);
+  assert.equal(isCreatorConversation({...before, relationshipType: "creator", inboundIntent: "partnership"}), true);
+  assert.equal(isCreatorConversation({...before, relationshipType: "creator", inboundIntent: "partnership", doNotContact: true}), false);
+});
+
+test("source-backed refresh appends evidence while preserving consent and milestones", () => {
+  const before = fixture().data;
+  const source = {label:"Latest conversation",url:"https://www.instagram.com/direct/t/example/",observedAt:"2026-10-27T16:00:00-07:00",note:"Creator confirmed the sample choice."};
+  const after = applyHqChanges(before,{observation:{source,fields:{relationshipType:"creator",inboundIntent:"partnership",summary:"Sample choice confirmed."}}});
+  assert.equal(after.summary,"Sample choice confirmed.");
+  assert.equal(after.verifiedAt,source.observedAt);
+  assert.deepEqual(after.evidence,[...before.evidence!,source]);
+  assert.deepEqual(after.milestones,before.milestones);
+  assert.equal(after.contactPolicy,before.contactPolicy);
+  assert.equal(after.doNotContact,before.doNotContact);
+  assert.equal('observation' in after,false);
+  for (const fields of [{doNotContact:false},{milestones:{}},{contactPolicy:"agent"},{evidence:[]}]) {
+    assert.throws(()=>applyHqChanges(before,{observation:{source,fields}}));
+  }
+  assert.throws(()=>applyHqChanges(before,{observation:{source:{...source,url:'javascript:alert(1)'},fields:{summary:'Changed'}}}));
+  assert.throws(()=>applyHqChanges(before,{observation:{fields:{summary:'Unattributed'}}}));
+  assert.throws(()=>applyHqChanges({...before,evidence:Array(200).fill(source)},{observation:{source,fields:{summary:'New'}}}));
+});
+
+test("replaying a source refresh appends its history and audit only once", async () => {
+ const memory=memoryRepository(); const store=createHqStore(memory.repository);
+ const request={version:1,mutationId:randomUUID(),changes:{observation:{source:{label:'Reviewed thread',url:'https://www.instagram.com/',observedAt:'2026-10-27T16:00:00-07:00',note:'New project context.'},fields:{summary:'New project context.'}}}};
+ await store.patch(fixture().id,request); await store.patch(fixture().id,request);
+ assert.equal(memory.snapshot().record.data.evidence?.length,2);assert.equal(memory.snapshot().audits.length,1);
+ assert.equal(hqUpdateBatchSchema.safeParse({updates:[{id:fixture().id,...request},{id:fixture().id,...request}]}).success,false);
 });

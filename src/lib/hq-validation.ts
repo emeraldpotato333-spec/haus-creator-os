@@ -18,9 +18,34 @@ const evidenceSchema = z.object({
   note: z.string().max(10000),
 }).passthrough();
 
-// Only these planning fields can change through the shared board. Identity,
-// source evidence, consent, commercial terms and actual milestones stay read-only.
+export const HQ_RELATIONSHIP_TYPES = ["creator", "customer", "trade", "other", "unclassified"] as const;
+export const HQ_INBOUND_INTENTS = ["partnership", "product_question", "order_support", "business", "general", "unknown"] as const;
+const webUrl = z.string().url().max(4000).refine((url) => /^https:\/\//i.test(url), "Use an HTTPS link.");
+const channelSchema = z.object({ platform: z.enum(["Instagram", "TikTok", "Email", "Other"]), label: z.string().min(1).max(100), url: webUrl }).strict();
+export const hqObservationFieldsSchema = z.object({
+  relationshipType: z.enum(HQ_RELATIONSHIP_TYPES).optional(),
+  inboundIntent: z.enum(HQ_INBOUND_INTENTS).optional(),
+  summary: z.string().min(1).max(10000).optional(),
+  project: z.string().max(5000).optional(),
+  timing: z.string().max(5000).optional(),
+  sampleStatus: z.string().max(2000).optional(),
+  agreementStatus: z.string().max(2000).optional(),
+  shippingStatus: z.string().max(2000).optional(),
+  profileImageUrl: webUrl.optional(),
+  channels: z.array(channelSchema).max(8).optional(),
+  latestMessage: z.string().max(3000).optional(),
+  lastMessageAt: z.iso.datetime({ offset: true }).optional(),
+  lastMessageDirection: z.enum(["inbound", "outbound", "unknown"]).optional(),
+}).strict().refine(fields => Object.keys(fields).length > 0, "Provide an observed update.");
+export const hqObservationSchema = z.object({
+  source: evidenceSchema.extend({url: webUrl, observedAt: z.iso.datetime({ offset: true }), note: z.string().min(1).max(10000)}).strict(),
+  fields: hqObservationFieldsSchema,
+}).strict();
+
+// Planning changes cannot alter consent, commitments or verified milestones.
+// Observed context requires a dated source and appends to the evidence history.
 export const hqChangesSchema = z.object({
+  observation: hqObservationSchema.optional(),
   stage: z.enum(HQ_STAGES).optional(),
   owner: z.string().trim().min(1).max(80).optional(),
   nextAction: z.string().trim().min(1).max(2000).optional(),
@@ -41,6 +66,13 @@ export const hqPatchSchema = z.object({
 }).strict();
 
 export const hqRecordDataSchema = z.object({
+  relationshipType: z.enum(HQ_RELATIONSHIP_TYPES).default("unclassified"),
+  inboundIntent: z.enum(HQ_INBOUND_INTENTS).default("unknown"),
+  profileImageUrl: webUrl.optional(),
+  channels: z.array(channelSchema).max(8).optional(),
+  latestMessage: z.string().max(3000).optional(),
+  lastMessageAt: z.iso.datetime({ offset: true }).optional(),
+  lastMessageDirection: z.enum(["inbound", "outbound", "unknown"]).optional(),
   name: z.string().min(1).max(200),
   handle: z.string().min(1).max(200),
   cohort: z.enum(["pilot", "case_study", "trial", "existing"]),
@@ -112,7 +144,13 @@ export class HqValidationError extends Error {
 
 export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown): HqRecordData {
   const changes = hqChangesSchema.parse(untrustedChanges);
-  const next = hqRecordDataSchema.parse({ ...current, ...changes });
+  const { observation, ...planning } = changes;
+  if (observation && (current.evidence?.length ?? 0) >= 200) {
+    throw new HqValidationError("Evidence history is full. Preserve the record and review storage before adding another observation.");
+  }
+  const next = hqRecordDataSchema.parse({ ...current, ...planning,
+    ...(observation ? { ...observation.fields, verifiedAt: observation.source.observedAt, evidence: [...(current.evidence ?? []), observation.source] } : {}),
+  });
   if (next.stage === "archived" && !next.archiveReason.trim()) {
     throw new HqValidationError("Give a reason before archiving this relationship.");
   }
@@ -135,3 +173,12 @@ export function isSameOriginMutation(request: Request): boolean {
     return false;
   }
 }
+
+// A routing gate, never permission to send. Unknown intent stays out of outreach.
+export function isCreatorConversation(data: HqRecordData) {
+  return data.relationshipType === "creator" && data.inboundIntent === "partnership" && !data.doNotContact;
+}
+export const hqUpdateBatchSchema = z.object({
+  updates: z.array(hqPatchSchema.extend({id: z.string().min(1).max(240)})).min(1).max(25),
+}).strict().refine(batch => new Set(batch.updates.map(item => item.id)).size === batch.updates.length, "Each record can appear once.");
+export type HqUpdateBatch = z.infer<typeof hqUpdateBatchSchema>;
