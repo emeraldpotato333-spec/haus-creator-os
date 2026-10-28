@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { POST } from "../src/app/api/headquarters/import/route";
 import { createHqStore, type HqAuditEntry, type HqRepository, type HqTransaction } from "../src/lib/hq-store";
-import { hqImportSchema, hqRecordDataSchema, type HqImportRecord, type HqRecordEnvelope } from "../src/lib/hq-validation";
+import { hqImportSchema, hqImportFileSchema, hqRecordDataSchema, type HqImportRecord, type HqRecordEnvelope } from "../src/lib/hq-validation";
 
 const candidate = (handle = "sample_creator"): HqImportRecord => ({
   id: `instagram:${handle}`,
@@ -138,4 +138,13 @@ test("import remains unavailable until explicitly configured", async () => {
     if (previous === undefined) delete process.env.HQ_ENABLED;
     else process.env.HQ_ENABLED = previous;
   }
+});
+
+
+test('large local migration files retain unique identities while server batches remain bounded', () => {
+  const file = { mutationId: randomUUID(), records: Array.from({ length: 301 }, (_, i) => candidate(`migration${i}`)) };
+  assert.equal(hqImportFileSchema.safeParse(file).success, true);
+  assert.equal(hqImportSchema.safeParse(file).success, false);
+  assert.equal(hqImportFileSchema.safeParse({ ...file, records: [...file.records, file.records[0]] }).success, false);
+  assert.equal(hqImportFileSchema.safeParse({ ...file, records: Array.from({ length: 501 }, (_, i) => candidate(`migration${i}`)) }).success, false);
 });

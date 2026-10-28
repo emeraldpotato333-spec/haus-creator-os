@@ -23,6 +23,8 @@ export const HQ_INBOUND_INTENTS = ["partnership", "product_question", "order_sup
 const webUrl = z.string().url().max(4000).refine((url) => /^https:\/\//i.test(url), "Use an HTTPS link.");
 const channelSchema = z.object({ platform: z.enum(["Instagram", "TikTok", "Email", "Other"]), label: z.string().min(1).max(100), url: webUrl }).strict();
 export const hqObservationFieldsSchema = z.object({
+  needsReconciliation: z.boolean().optional(),
+  queueCategory: z.enum(["relationship", "research"]).optional(),
   relationshipType: z.enum(HQ_RELATIONSHIP_TYPES).optional(),
   inboundIntent: z.enum(HQ_INBOUND_INTENTS).optional(),
   summary: z.string().min(1).max(10000).optional(),
@@ -45,6 +47,7 @@ export const hqObservationSchema = z.object({
 // Planning changes cannot alter consent, commitments or verified milestones.
 // Observed context requires a dated source and appends to the evidence history.
 export const hqChangesSchema = z.object({
+  takeover: z.enum(["claim", "release"]).optional(),
   observation: hqObservationSchema.optional(),
   stage: z.enum(HQ_STAGES).optional(),
   owner: z.string().trim().min(1).max(80).optional(),
@@ -57,7 +60,8 @@ export const hqChangesSchema = z.object({
   decisionReason: z.string().max(5000).optional(),
   decisionStatus: z.enum(HQ_DECISION_STATUSES).optional(),
   taskState: z.enum(HQ_TASK_STATES).optional(),
-}).strict().refine((changes) => Object.keys(changes).length > 0, "Provide at least one planning change.");
+}).strict().refine((changes) => Object.keys(changes).length > 0, "Provide at least one planning change.")
+  .refine(changes => !changes.takeover || Object.keys(changes).length === 1, "Save takeover separately from other edits.");
 
 export const hqPatchSchema = z.object({
   version: z.number().int().positive(),
@@ -66,6 +70,13 @@ export const hqPatchSchema = z.object({
 }).strict();
 
 export const hqRecordDataSchema = z.object({
+  queueCategory: z.enum(["relationship", "research"]).default("relationship"),
+  needsReconciliation: z.boolean().default(false),
+  queuePriority: z.number().int().min(1).max(999).default(99),
+  identityAliases: z.array(z.string().max(240)).max(20).default([]),
+  humanTakeover: z.boolean().default(false),
+  humanTakeoverAt: z.iso.datetime({ offset: true }).nullable().default(null),
+  takeoverPreviousOwner: z.string().max(80).nullable().default(null),
   relationshipType: z.enum(HQ_RELATIONSHIP_TYPES).default("unclassified"),
   inboundIntent: z.enum(HQ_INBOUND_INTENTS).default("unknown"),
   profileImageUrl: webUrl.optional(),
@@ -123,6 +134,9 @@ export const hqImportSchema = z.object({
 });
 
 export type HqImportInput = z.infer<typeof hqImportSchema>;
+// Local review files can be larger; each server transaction remains capped at 25.
+export const hqImportFileSchema = hqImportSchema.safeExtend({ records: z.array(hqImportSchema.shape.records.element).min(1).max(500) });
+export type HqImportFile = z.infer<typeof hqImportFileSchema>;
 export type HqImportRecord = HqImportInput["records"][number];
 export type HqImportResult = { created: number; skipped: number; records: { id: string; status: "created" | "existing" }[] };
 
@@ -142,15 +156,29 @@ export class HqValidationError extends Error {
   }
 }
 
-export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown): HqRecordData {
+export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown, now = new Date().toISOString()): HqRecordData {
   const changes = hqChangesSchema.parse(untrustedChanges);
-  const { observation, ...planning } = changes;
+  const { observation, takeover, ...planning } = changes;
   if (observation && (current.evidence?.length ?? 0) >= 200) {
     throw new HqValidationError("Evidence history is full. Preserve the record and review storage before adding another observation.");
   }
   const next = hqRecordDataSchema.parse({ ...current, ...planning,
     ...(observation ? { ...observation.fields, verifiedAt: observation.source.observedAt, evidence: [...(current.evidence ?? []), observation.source] } : {}),
   });
+  if (takeover === "claim" && !current.humanTakeover) {
+    next.humanTakeover = true;
+    next.humanTakeoverAt = now;
+    next.takeoverPreviousOwner = current.owner;
+    next.owner = "William";
+  }
+  if (takeover === "release" && current.humanTakeover) {
+    next.humanTakeover = false;
+    next.humanTakeoverAt = null;
+    next.owner = current.takeoverPreviousOwner || "Creator Agent";
+    next.takeoverPreviousOwner = null;
+    // A handback is not approval to send an old draft or reuse stale context.
+    next.needsReconciliation = true;
+  }
   if (next.stage === "archived" && !next.archiveReason.trim()) {
     throw new HqValidationError("Give a reason before archiving this relationship.");
   }
@@ -176,7 +204,16 @@ export function isSameOriginMutation(request: Request): boolean {
 
 // A routing gate, never permission to send. Unknown intent stays out of outreach.
 export function isCreatorConversation(data: HqRecordData) {
-  return data.relationshipType === "creator" && data.inboundIntent === "partnership" && !data.doNotContact;
+  return data.relationshipType === "creator" && data.inboundIntent === "partnership" && data.queueCategory !== "research" && !data.doNotContact;
+}
+export function agentReplyBlockReason(data: HqRecordData): string | null {
+  if (data.humanTakeover) return "William is handling this. Agent messages are paused across linked channels.";
+  if (data.doNotContact) return "Do not contact.";
+  if (data.stage === "archived" || data.queueCategory === "research") return "This record is outside the active outreach queue.";
+  if (data.needsReconciliation) return "Recheck the latest linked conversations before any agent reply.";
+  if (!isCreatorConversation(data)) return "Creator outreach does not apply to this conversation.";
+  if (data.contactPolicy !== "agent") return "A separate message approval is required. Returning work to an agent does not grant send permission.";
+  return null;
 }
 export const hqUpdateBatchSchema = z.object({
   updates: z.array(hqPatchSchema.extend({id: z.string().min(1).max(240)})).min(1).max(25),

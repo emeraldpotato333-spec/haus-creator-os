@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { applyHqChanges, isCreatorConversation, hqUpdateBatchSchema, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
+import { applyHqChanges, agentReplyBlockReason, isCreatorConversation, hqUpdateBatchSchema, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
 import { createHqStore, HqStoreError, isHqConfigured, type HqAuditEntry, type HqRepository, type HqTransaction } from "../src/lib/hq-store";
 
 const fixture = (): HqRecordEnvelope => ({
@@ -215,4 +215,59 @@ test("replaying a source refresh appends its history and audit only once", async
  await store.patch(fixture().id,request); await store.patch(fixture().id,request);
  assert.equal(memory.snapshot().record.data.evidence?.length,2);assert.equal(memory.snapshot().audits.length,1);
  assert.equal(hqUpdateBatchSchema.safeParse({updates:[{id:fixture().id,...request},{id:fixture().id,...request}]}).success,false);
+});
+
+test('human takeover persists across unrelated edits and handback preserves send restrictions', () => {
+  const before = fixture().data;
+  const held = applyHqChanges(before, { takeover: 'claim' }, '2026-10-28T00:20:00Z');
+  assert.equal(held.humanTakeover, true);
+  assert.equal(held.owner, 'William');
+  assert.equal(held.takeoverPreviousOwner, before.owner);
+  assert.equal(held.humanTakeoverAt, '2026-10-28T00:20:00Z');
+  const edited = applyHqChanges(held, { notes: 'A new internal note.' });
+  assert.equal(edited.humanTakeover, true);
+  const repeated = applyHqChanges(edited, { takeover: 'claim' });
+  assert.equal(repeated.takeoverPreviousOwner, before.owner);
+  const released = applyHqChanges(repeated, { takeover: 'release' });
+  assert.equal(released.humanTakeover, false);
+  assert.equal(released.owner, before.owner);
+  assert.equal(released.needsReconciliation, true);
+  assert.equal(released.contactPolicy, before.contactPolicy);
+  assert.deepEqual(released.milestones, before.milestones);
+  assert.deepEqual(released.evidence, before.evidence);
+});
+
+test('a human takeover invalidates a concurrent stale agent save', async () => {
+  const memory = memoryRepository();
+  const store = createHqStore(memory.repository);
+  await store.patch(fixture().id, { version: 1, mutationId: randomUUID(), changes: { takeover: 'claim' } });
+  await assert.rejects(store.patch(fixture().id, { version: 1, mutationId: randomUUID(), changes: { notes: 'Stale agent work' } }), /changed this card/);
+  assert.equal(memory.snapshot().record.data.humanTakeover, true);
+  assert.equal(memory.snapshot().audits.length, 1);
+});
+
+test('reconciliation requires a dated source and cannot release a human hold', () => {
+  const before = applyHqChanges(fixture().data, { takeover: 'claim' });
+  assert.throws(() => applyHqChanges(before, { needsReconciliation: false }));
+  assert.throws(() => applyHqChanges(before, { humanTakeover: false }));
+  assert.throws(() => applyHqChanges(before, { takeover: 'release', owner: 'Agent' }));
+  const next = applyHqChanges({ ...before, needsReconciliation: true }, { observation: {
+    source: { label: 'Reviewed source', url: 'https://www.instagram.com/direct/inbox/', observedAt: '2026-10-28T00:25:00Z', note: 'Latest conversation rechecked.' },
+    fields: { needsReconciliation: false },
+  } });
+  assert.equal(next.needsReconciliation, false);
+  assert.equal(next.humanTakeover, true);
+  assert.equal(next.evidence?.length, (before.evidence?.length ?? 0) + 1);
+});
+
+
+test('agent reply gate prioritizes takeover and never promotes research or imported history', () => {
+  const data = hqRecordDataSchema.parse({ ...fixture().data, relationshipType: 'creator', inboundIntent: 'partnership', contactPolicy: 'agent' });
+  assert.equal(agentReplyBlockReason(data), null);
+  assert.match(agentReplyBlockReason({ ...data, humanTakeover: true })!, /William is handling/);
+  assert.match(agentReplyBlockReason({ ...data, needsReconciliation: true })!, /Recheck/);
+  assert.match(agentReplyBlockReason({ ...data, queueCategory: 'research' })!, /outside/);
+  assert.equal(isCreatorConversation({ ...data, queueCategory: 'research' }), false);
+  assert.match(agentReplyBlockReason({ ...data, contactPolicy: 'manual' })!, /approval/);
+  assert.match(agentReplyBlockReason({ ...data, doNotContact: true })!, /Do not contact/);
 });
