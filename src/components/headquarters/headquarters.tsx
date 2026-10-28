@@ -32,11 +32,12 @@ export function Headquarters(){
  // Network completion, not an immediate synchronous effect update.
  // eslint-disable-next-line react-hooks/set-state-in-effect
  useEffect(()=>{void refresh();},[refresh]);
+ useEffect(()=>{const onFocus=()=>{if(!busy.current)void refresh();};window.addEventListener('focus',onFocus);return ()=>window.removeEventListener('focus',onFocus);},[refresh]);
  async function save(r:HqRecordEnvelope,changes:HqChanges,mutationId=crypto.randomUUID()):Promise<HqRecordEnvelope|null>{
   if(busy.current)return null;busy.current=true;setSaving(true);setError('');setNotice('');
   try{const response=await fetch('/api/headquarters/'+encodeURIComponent(r.id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:r.version,mutationId,changes})});const body=await response.json();if(response.status===409){if(body.current)setRecords(all=>all.map(x=>x.id===r.id?body.current:x));throw new Error('This record changed. Your edit was not saved. Reopen the conversation to review its latest version.');}if(!response.ok)throw new Error(body.error||'The change was not saved.');setRecords(all=>all.map(x=>x.id===r.id?body.record:x));setNotice('Saved to the shared workspace.');return body.record;}catch(e){setError(e instanceof Error?e.message:'Could not save.');return null;}finally{busy.current=false;setSaving(false);setDragging('');}
  }
- const backlog=records.filter(r=>r.data.queueCategory!=='research'&&r.data.needsReconciliation&&r.data.stage!=='archived').sort((a,b)=>a.data.queuePriority-b.data.queuePriority||a.data.name.localeCompare(b.data.name));
+ const backlog=records.filter(r=>r.data.queueCategory!=='research'&&r.data.needsReconciliation&&r.data.stage!=='archived').sort((a,b)=>a.data.queuePriority-b.data.queuePriority||(b.data.warmth??0)-(a.data.warmth??0)||a.data.name.localeCompare(b.data.name));
  const active=records.filter(r=>r.data.stage!=='archived'&&r.data.queueCategory!=='research'&&!r.data.needsReconciliation);
  const matchesFilter=(r:HqRecordEnvelope,k:string)=>k==='research'?r.data.queueCategory==='research':k==='archived'?r.data.stage==='archived'&&r.data.queueCategory!=='research':r.data.stage!=='archived'&&r.data.queueCategory!=='research'&&(k==='all'||(k==='reconciliation'?r.data.needsReconciliation:k==='takeover'?r.data.humanTakeover:k==='waiting'?r.data.waitingOn==='creator':r.data.relationshipType===k));
  const ready=active.filter(r=>r.data.decisionStatus==='ready');
@@ -47,7 +48,7 @@ export function Headquarters(){
  const actionQueue=active.filter(r=>r.data.waitingOn!=='creator'&&r.data.taskState!=='done'&&r.data.decisionStatus!=='ready').sort((a,b)=>(a.data.dueDate??'9999').localeCompare(b.data.dueDate??'9999'));
  const yourActions=actionQueue.filter(r=>r.data.waitingOn==='william'||r.data.owner==='William').sort((a,b)=>a.data.name.localeCompare(b.data.name));
  const agentActions=actionQueue.filter(r=>!yourActions.some(x=>x.id===r.id));
- const visible=records.filter(r=>matchesFilter(r,filter)&&`${r.data.name} ${r.data.handle} ${r.data.nextAction} ${r.data.summary}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>a.data.queuePriority-b.data.queuePriority||a.data.name.localeCompare(b.data.name));
+ const visible=records.filter(r=>matchesFilter(r,filter)&&`${r.data.name} ${r.data.handle} ${r.data.nextAction} ${r.data.summary}`.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>a.data.queuePriority-b.data.queuePriority||(b.data.warmth??0)-(a.data.warmth??0)||a.data.name.localeCompare(b.data.name));
  const navigate=(v:View)=>{if(busy.current)return;setView(v);setNotice('');setEditing(false);setSelected(null);window.history.replaceState(null,'','/headquarters');};
  const goPeople=(kind='all')=>{setFilter(kind);navigate('people');};
  const row=(r:HqRecordEnvelope)=>{const d=r.data;return <button className="hq-action-row" key={r.id} onClick={()=>open(r)}><Avatar r={r}/><span className="hq-row-name"><strong>{d.name}</strong><Platform name={d.platform||'Other'}/></span><span className="hq-row-action">{d.nextAction}</span><span className="hq-row-owner"><b>{d.owner}</b><small>{dateLabel(d.dueDate)}</small></span><ChevronRight size={18}/></button>;};

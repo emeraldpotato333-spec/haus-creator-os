@@ -271,3 +271,12 @@ test('agent reply gate prioritizes takeover and never promotes research or impor
   assert.match(agentReplyBlockReason({ ...data, contactPolicy: 'manual' })!, /approval/);
   assert.match(agentReplyBlockReason({ ...data, doNotContact: true })!, /Do not contact/);
 });
+
+
+test('handback from a William-owned record assigns agent preparation without approval expansion', () => {
+ const original = { ...fixture().data, owner: 'William', contactPolicy: 'manual' as const };
+ const released = applyHqChanges(applyHqChanges(original, { takeover: 'claim' }), { takeover: 'release' });
+ assert.equal(released.owner, 'Creator Agent');
+ assert.equal(released.contactPolicy, 'manual');
+ assert.equal(released.needsReconciliation, true);
+});

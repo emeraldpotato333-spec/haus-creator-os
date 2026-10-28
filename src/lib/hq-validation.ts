@@ -174,7 +174,7 @@ export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown,
   if (takeover === "release" && current.humanTakeover) {
     next.humanTakeover = false;
     next.humanTakeoverAt = null;
-    next.owner = current.takeoverPreviousOwner || "Creator Agent";
+    next.owner = current.takeoverPreviousOwner && current.takeoverPreviousOwner !== "William" ? current.takeoverPreviousOwner : "Creator Agent";
     next.takeoverPreviousOwner = null;
     // A handback is not approval to send an old draft or reuse stale context.
     next.needsReconciliation = true;
