@@ -1,5 +1,9 @@
-import { Headquarters } from '@/components/headquarters/headquarters';
-import './headquarters.css';
+import { Inter } from 'next/font/google';
+import { CommandDesk } from '@/components/headquarters/desk/command-desk';
+import './desk/base.css';
+import './desk/desk.css';
 
-export const metadata = { title: 'Creator headquarters | HAUS', robots: { index: false, follow: false } };
-export default function HeadquartersPage() { return <Headquarters />; }
+const inter = Inter({ subsets: ['latin'], variable: '--td-font' });
+
+export const metadata = { title: 'Creator HQ | HAUS', robots: { index: false, follow: false } };
+export default function HeadquartersPage() { return <div className={inter.variable}><CommandDesk /></div>; }

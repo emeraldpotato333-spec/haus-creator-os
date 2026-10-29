@@ -356,6 +356,24 @@ export function CommandDesk() {
     else setMessage({ tone: 'error', text: 'Couldn’t remove that lesson. Refresh and try again' });
   };
 
+  // Links from decision emails and older pages: ?creator=<id> opens that
+  // person, ?view=<name> opens a section. Read once, after records arrive.
+  const linked = useRef(false);
+  useEffect(() => {
+    if (linked.current || !records.length) return;
+    linked.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const creator = params.get('creator');
+    const linkedView = params.get('view');
+    const views: Record<string, View> = { today: 'today', people: 'people', pipeline: 'pipeline', playbook: 'playbook', settings: 'settings', customers: 'others', learned: 'learned' };
+    // One-time sync from the URL once data has loaded.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (creator && records.some((r) => r.id === creator)) { setSelectedId(creator); setSheet(true); }
+    else if (linkedView && views[linkedView]) setView(views[linkedView]);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    if (creator || linkedView) window.history.replaceState(null, '', '/headquarters');
+  }, [records]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSheet(false); setFocusGroup(null); setQuery(''); } };
     window.addEventListener('keydown', onKey);

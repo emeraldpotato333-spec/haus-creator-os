@@ -1,4 +1,4 @@
-/* Today directions. Five type sizes: 30 title, 22 lead name, 17 section, 15 body, 13 meta.
+/* Shared base for the Command desk. Five type sizes: 30 title, 22 lead name, 17 section, 15 body, 13 meta.
    Spacing rhythm: 8 to 12 inside a group, 32 to 40 between groups. One accent. */
 .td {
   --ground: #eeebe5;

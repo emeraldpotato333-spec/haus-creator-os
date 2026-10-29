@@ -1,4 +1,4 @@
-/* Command desk. Builds on the tokens, rail and face styles in directions.css.
+/* Command desk. Builds on the tokens, rail and face styles in base.css.
    Type roles stay at five sizes: 30 title, 22 lead, 17 section, 15 body, 13 meta.
    The accent is reserved for slipping signals; actions use ink. */
 .dk { --ink-tint: #e8e3da; }
