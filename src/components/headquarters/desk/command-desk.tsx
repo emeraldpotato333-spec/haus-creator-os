@@ -31,7 +31,7 @@ function deskLists(records: HqRecordEnvelope[]) {
   const hoursSince = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 36e5 : 0);
   const slipping: Group[] = [
     { key: 'overdue', title: 'Past their review date', people: [...ready, ...queue].filter(late) },
-    { key: 'unanswered', title: 'Replied over a day ago', people: creators.filter((r) => r.data.lastMessageDirection === 'inbound' && r.data.waitingOn !== 'creator' && hoursSince(r.data.lastMessageAt) > 24) },
+    { key: 'unanswered', title: 'Replied over a day ago', people: creators.filter((r) => r.data.lastMessageDirection === 'inbound' && r.data.waitingOn !== 'creator' && !r.data.humanTakeover && hoursSince(r.data.lastMessageAt) > 24) },
     { key: 'held', title: 'You’ve held 3+ days', people: creators.filter((r) => r.data.humanTakeover && hoursSince(r.data.humanTakeoverAt) > 72) },
     { key: 'quiet', title: 'Follow-up check is due', people: waiting.filter(late) },
     { key: 'undated', title: 'No review date set', people: queue.filter((r) => !r.data.dueDate) },
@@ -96,7 +96,7 @@ function FaceRow({ people, onPick, max = 14 }: { people: HqRecordEnvelope[]; onP
 
 function Workspace({ r, mode, setMode, saving, stale, onSave, onClose, backLabel }: {
   r: HqRecordEnvelope; mode: Mode; setMode: (m: Mode) => void; saving: boolean; stale: boolean;
-  onSave: (changes: HqChanges, done?: string) => Promise<boolean>; onClose: () => void; backLabel: string;
+  onSave: (changes: HqChanges, done?: string, advance?: boolean) => Promise<boolean>; onClose: () => void; backLabel: string;
 }) {
   const d = r.data;
   const draft = draftFromNotes(d.notes);
@@ -188,7 +188,7 @@ function Workspace({ r, mode, setMode, saving, stale, onSave, onClose, backLabel
             <input autoFocus value={mode.note} placeholder="Not a fit for the November push" onChange={(e) => setMode({ kind: 'decline', note: e.target.value })} />
           </label>
           <div className="dk-actions">
-            <button className="dk-primary" disabled={saving} onClick={async () => { if (await onSave({ verdict: { verdict: 'declined', ...(mode.note.trim() ? { note: mode.note.trim() } : {}) } }, 'Declined. The agents have your reason')) setMode({ kind: 'view' }); }}>Decline</button>
+            <button className="dk-primary" disabled={saving} onClick={async () => { if (await onSave({ verdict: { verdict: 'declined', ...(mode.note.trim() ? { note: mode.note.trim() } : {}) } }, 'Declined. The agents have your reason', true)) setMode({ kind: 'view' }); }}>Decline</button>
             <button className="dk-secondary" disabled={saving} onClick={() => setMode({ kind: 'view' })}>Keep it open</button>
           </div>
         </section>
@@ -196,9 +196,9 @@ function Workspace({ r, mode, setMode, saving, stale, onSave, onClose, backLabel
 
       {mode.kind === 'view' && (
         <div className="dk-actions">
-          {canDecide && <button className="dk-primary" disabled={saving || stale} onClick={() => void onSave({ verdict: { verdict: 'approved' } }, `Approved. ${d.owner} picks it up next run`)}><Check size={17} />{draft ? 'Approve reply' : 'Approve'}</button>}
+          {canDecide && <button className="dk-primary" disabled={saving || stale} onClick={() => void onSave({ verdict: { verdict: 'approved' } }, `Approved. ${d.owner} picks it up next run`, true)}><Check size={17} />{draft ? 'Approve reply' : 'Approve'}</button>}
           {canDecide && <button className="dk-secondary" disabled={saving || stale} onClick={() => setMode({ kind: 'decline', note: '' })}>Decline</button>}
-          <button className="dk-secondary" disabled={saving || stale} onClick={() => void onSave({ takeover: d.humanTakeover ? 'release' : 'claim' }, d.humanTakeover ? 'Handed back. Agents recheck the thread first' : 'It’s yours. Agent messages are paused')}>
+          <button className="dk-secondary" disabled={saving || stale} onClick={() => void onSave({ takeover: d.humanTakeover ? 'release' : 'claim' }, d.humanTakeover ? 'Handed back. Agents recheck the thread first' : 'It’s yours. Agent messages are paused', true)}>
             {d.humanTakeover ? <><Undo2 size={16} />Return to agents</> : <><Hand size={16} />I’m handling this</>}
           </button>
         </div>
@@ -300,7 +300,7 @@ export function CommandDesk() {
   const [view, setView] = useState<View>('today');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState(false);
-  const [focusGroup, setFocusGroup] = useState<Group | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: 'view' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
@@ -310,6 +310,7 @@ export function CommandDesk() {
   const [peopleText, setPeopleText] = useState('');
   const busy = useRef(false);
   const l: Lists = useMemo(() => deskLists(records), [records]);
+  const focusGroup = focusKey ? l.slipping.find((g) => g.key === focusKey) ?? null : null;
   const people = useMemo(() => peopleFor(records, peopleFilter, peopleText), [records, peopleFilter, peopleText]);
 
   const hasPane = view === 'today' || view === 'people' || view === 'others' || view === 'pipeline';
@@ -322,8 +323,12 @@ export function CommandDesk() {
     if (!hasPane) setView('people');
   };
 
-  async function save(changes: HqChanges, done = 'Saved') {
+  async function save(changes: HqChanges, done = 'Saved', advance = false) {
     if (!selected || busy.current) return false;
+    // The list on screen right now decides who comes next.
+    const onScreen = view === 'people' ? people : view === 'others' ? l.others : focusGroup ? focusGroup.people : [...l.ready, ...l.yours];
+    const at = onScreen.findIndex((x) => x.id === selected.id);
+    const next = advance ? onScreen.slice(at + 1).concat(onScreen.slice(0, Math.max(at, 0))).find((x) => x.id !== selected.id) : undefined;
     busy.current = true; setSaving(true); setMessage(null);
     try {
       const response = await fetch('/api/headquarters/' + encodeURIComponent(selected.id), {
@@ -338,8 +343,14 @@ export function CommandDesk() {
       }
       if (!response.ok) throw new Error(body.error || 'That didn’t save. Nothing was changed');
       setRecords((all) => all.map((x) => (x.id === selected.id ? body.record : x)));
-      setSelectedId(selected.id);
-      setMessage({ tone: 'ok', text: done });
+      if (advance) {
+        setMode({ kind: 'view' });
+        if (next) { setSelectedId(next.id); setMessage({ tone: 'ok', text: `${done}. Next up: ${firstName(next.data.name)}` }); }
+        else { setSelectedId(null); setSheet(false); setMessage({ tone: 'ok', text: `${done}. That’s everyone here` }); }
+      } else {
+        setSelectedId(selected.id);
+        setMessage({ tone: 'ok', text: done });
+      }
       return true;
     } catch (e) {
       setMessage({ tone: 'error', text: e instanceof Error ? e.message : 'That didn’t save' });
@@ -375,14 +386,20 @@ export function CommandDesk() {
   }, [records]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSheet(false); setFocusGroup(null); setQuery(''); } };
+    if (message?.tone !== 'ok') return;
+    const t = window.setTimeout(() => setMessage(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [message]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setSheet(false); setFocusKey(null); setQuery(''); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const found = query.trim().length > 1 ? records.filter((r) => `${r.data.name} ${r.data.handle}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : [];
   const yourCount = l.ready.length + l.yours.length;
-  const go = (v: View, filter?: PeopleFilter) => { setView(v); setSelectedId(null); setFocusGroup(null); setMode({ kind: 'view' }); setSheet(false); if (filter) setPeopleFilter(filter); window.scrollTo({ top: 0 }); };
+  const go = (v: View, filter?: PeopleFilter) => { setView(v); setSelectedId(null); setFocusKey(null); setMode({ kind: 'view' }); setSheet(false); if (filter) setPeopleFilter(filter); window.scrollTo({ top: 0 }); };
   const nav: { id: View; label: string; icon: typeof Users; count?: number; quiet?: boolean; where: 'both' | 'desk' | 'phone' }[] = [
     { id: 'today', label: 'Today', icon: LayoutGrid, count: yourCount, where: 'both' },
     { id: 'people', label: 'People', icon: Users, where: 'both' },
@@ -457,7 +474,7 @@ export function CommandDesk() {
         {records.length > 0 && view === 'today' && (
           <section className={'dk-slip' + (l.slipping.length ? '' : ' is-clear')} aria-label="Slipping">
             {l.slipping.length ? l.slipping.map((g) => (
-              <button key={g.key} className={'dk-slip-card' + (focusGroup?.key === g.key ? ' is-active' : '')} onClick={() => { setFocusGroup(focusGroup?.key === g.key ? null : g); pick(g.people[0]); }}>
+              <button key={g.key} className={'dk-slip-card' + (focusKey === g.key ? ' is-active' : '')} onClick={() => { const on = focusKey !== g.key; setFocusKey(on ? g.key : null); setMode({ kind: 'view' }); if (on) setSelectedId(g.people[0].id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
                 <strong>{g.people.length}</strong>
                 <span>{g.title}</span>
                 <span className="dk-slip-faces">{g.people.slice(0, 4).map((r) => <Face key={r.id} r={r} size={28} />)}</span>
@@ -473,7 +490,7 @@ export function CommandDesk() {
                 <section key={g.key}>
                   <header className="td-section">
                     <h3>{g.title}</h3><span className="td-count">{g.people.length}</span>
-                    {focusGroup && <button className="dk-text-button dk-clear" onClick={() => setFocusGroup(null)}><X size={15} />Back to today</button>}
+                    {focusGroup && <button className="dk-text-button dk-clear" onClick={() => setFocusKey(null)}><X size={15} />Back to today</button>}
                   </header>
                   {g.people.length ? <div className="dk-list">{g.people.map((r) => <QueueRow key={r.id} r={r} selected={selected?.id === r.id} onPick={pick} />)}</div>
                     : <p className="dk-none">{g.key === 'ready' ? 'No decisions waiting' : 'Nothing else on you'}</p>}
