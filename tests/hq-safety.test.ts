@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { applyHqChanges, agentReplyBlockReason, isCreatorConversation, hqUpdateBatchSchema, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
+import { applyHqChanges, draftFromNotes, notesWithDraft, agentReplyBlockReason, isCreatorConversation, hqUpdateBatchSchema, hqPatchSchema, hqRecordDataSchema, isSameOriginMutation, type HqRecordEnvelope } from "../src/lib/hq-validation";
 import { createHqStore, HqStoreError, isHqConfigured, type HqAuditEntry, type HqRepository, type HqTransaction } from "../src/lib/hq-store";
 
 const fixture = (): HqRecordEnvelope => ({
@@ -279,4 +279,24 @@ test('handback from a William-owned record assigns agent preparation without app
  assert.equal(released.owner, 'Creator Agent');
  assert.equal(released.contactPolicy, 'manual');
  assert.equal(released.needsReconciliation, true);
+});
+
+test("William's edits are kept as teaching examples and can be forgotten", () => {
+  const before = fixture().data;
+  const edited = applyHqChanges(before, { nextAction: "Ask Sample about their tile timeline.", teach: { kind: "nextAction", before: before.nextAction, after: "Ask Sample about their tile timeline.", why: "Lead with timing" } }, "2026-10-28T17:00:00.000Z");
+  assert.equal(edited.williamEdits?.length, 1);
+  assert.deepEqual(edited.williamEdits?.[0], { id: "2026-10-28T17:00:00.000Z:nextAction", at: "2026-10-28T17:00:00.000Z", kind: "nextAction", before: "Prepare sample intake.", after: "Ask Sample about their tile timeline.", why: "Lead with timing" });
+  assert.equal(applyHqChanges(edited, { teach: { kind: "draft", before: "Same", after: "Same " } }).williamEdits?.length, 1, "An unchanged edit teaches nothing");
+  assert.equal(applyHqChanges(edited, { forgetEdit: "2026-10-28T17:00:00.000Z:nextAction" }).williamEdits?.length, 0);
+});
+
+test("A verdict records William's choice on a ready decision without sending", () => {
+  const ready = applyHqChanges(fixture().data, { decisionStatus: "ready", notes: notesWithDraft("RESEARCH\nPrior notes", "Hi! Which room is first?") });
+  assert.equal(draftFromNotes(ready.notes), "Hi! Which room is first?");
+  assert.ok(ready.notes.endsWith("RESEARCH\nPrior notes"), "Research notes survive a draft rewrite");
+  const approved = applyHqChanges(ready, { verdict: { verdict: "approved" } }, "2026-10-28T17:00:00.000Z");
+  assert.equal(approved.decisionStatus, "none");
+  assert.deepEqual(approved.williamVerdict, { verdict: "approved", at: "2026-10-28T17:00:00.000Z", decisionReason: "Review freight estimate.", draft: "Hi! Which room is first?" });
+  assert.equal(approved.contactPolicy, "manual", "Approval does not change send permission");
+  assert.throws(() => applyHqChanges(approved, { verdict: { verdict: "declined" } }), /ready decision/);
 });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, BookOpen, Columns3, LayoutGrid, RefreshCw, Settings2, Users } from 'lucide-react';
 import type { HqRecordEnvelope } from '@/lib/hq-validation';
+import { Face, ago, ask, due, firstName, initials, safeUrl } from '@/components/headquarters/desk/parts';
 
 type Direction = 'focus' | 'lanes' | 'faces';
 const directions: { id: Direction; label: string }[] = [
@@ -22,40 +23,6 @@ const nav = [
 ];
 
 const openHref = (r: HqRecordEnvelope) => '/headquarters?creator=' + encodeURIComponent(r.id);
-const firstName = (name: string) => name.split(/[\s/&]+/)[0];
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join('').toUpperCase();
-const safeUrl = (v?: string) => (v && /^https:\/\//.test(v) ? v : undefined);
-
-// The records carry long, careful agent instructions. Today only needs the
-// first sentence, phrased as the step itself.
-function ask(text: string, max = 120) {
-  const sentence = text.replace(/^(William|Will|Creator Agent|Agent) to /i, '').split(/(?<=[.!?])\s/)[0].replace(/\.$/, '');
-  const clean = sentence.charAt(0).toUpperCase() + sentence.slice(1);
-  return clean.length > max ? clean.slice(0, max).replace(/\s+\S*$/, '') + '…' : clean;
-}
-
-function todayPT() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-}
-
-function due(date: string | null | undefined) {
-  if (!date) return { text: 'No date', late: false };
-  const days = Math.round((new Date(date + 'T12:00:00').getTime() - new Date(todayPT() + 'T12:00:00').getTime()) / 864e5);
-  if (days < 0) return { text: days === -1 ? 'Since yesterday' : `${-days} days late`, late: true };
-  if (days === 0) return { text: 'Today', late: false };
-  if (days === 1) return { text: 'Tomorrow', late: false };
-  return { text: new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), late: false };
-}
-
-function Face({ r, size = 44 }: { r: HqRecordEnvelope; size?: number }) {
-  const [failed, setFailed] = useState(false);
-  const src = safeUrl(r.data.profileImageUrl);
-  return (
-    <span className="td-face" style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}>
-      {src && !failed ? <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials(r.data.name)}
-    </span>
-  );
-}
 
 function useRecords() {
   const [records, setRecords] = useState<HqRecordEnvelope[]>([]);
@@ -94,15 +61,6 @@ function derive(records: HqRecordEnvelope[]) {
   return { hero, heroIsDecision: Boolean(ready[0]), yourRest, yourCount: ready.length + yours.length, agents, waiting, backlog };
 }
 type Lists = ReturnType<typeof derive>;
-
-function ago(iso?: string) {
-  if (!iso) return '';
-  const hours = Math.round((Date.now() - new Date(iso).getTime()) / 36e5);
-  if (hours < 1) return 'just now';
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? 'yesterday' : `${days} days ago`;
-}
 
 function Hero({ l, compact = false, quote = false }: { l: Lists; compact?: boolean; quote?: boolean }) {
   if (!l.hero) {

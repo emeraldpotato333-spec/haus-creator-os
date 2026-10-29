@@ -18,6 +18,26 @@ const evidenceSchema = z.object({
   note: z.string().max(10000),
 }).passthrough();
 
+// William's edits are kept as teaching examples for the agents: what they
+// prepared, what he changed it to, and optionally why.
+export const HQ_TEACH_KINDS = ["draft", "nextAction", "decision"] as const;
+const williamEditSchema = z.object({
+  id: z.string().max(80),
+  at: z.iso.datetime({ offset: true }),
+  kind: z.enum(HQ_TEACH_KINDS),
+  before: z.string().max(5000),
+  after: z.string().max(5000),
+  why: z.string().max(1000).optional(),
+}).strict();
+const williamVerdictSchema = z.object({
+  verdict: z.enum(["approved", "declined"]),
+  at: z.iso.datetime({ offset: true }),
+  decisionReason: z.string().max(5000),
+  draft: z.string().max(5000).optional(),
+  note: z.string().max(1000).optional(),
+}).strict();
+const MAX_WILLIAM_EDITS = 50;
+
 export const HQ_RELATIONSHIP_TYPES = ["creator", "customer", "trade", "other", "unclassified"] as const;
 export const HQ_INBOUND_INTENTS = ["partnership", "product_question", "order_support", "business", "general", "unknown"] as const;
 const webUrl = z.string().url().max(4000).refine((url) => /^https:\/\//i.test(url), "Use an HTTPS link.");
@@ -60,6 +80,11 @@ export const hqChangesSchema = z.object({
   decisionReason: z.string().max(5000).optional(),
   decisionStatus: z.enum(HQ_DECISION_STATUSES).optional(),
   taskState: z.enum(HQ_TASK_STATES).optional(),
+  teach: z.object({ kind: z.enum(HQ_TEACH_KINDS), before: z.string().max(5000), after: z.string().max(5000), why: z.string().trim().max(1000).optional() }).strict().optional(),
+  forgetEdit: z.string().max(80).optional(),
+  // Records William's choice for agents to read on their next run. It is not a
+  // send: message approval rules in the operating policy still apply.
+  verdict: z.object({ verdict: z.enum(["approved", "declined"]), note: z.string().trim().max(1000).optional() }).strict().optional(),
 }).strict().refine((changes) => Object.keys(changes).length > 0, "Provide at least one planning change.")
   .refine(changes => !changes.takeover || Object.keys(changes).length === 1, "Save takeover separately from other edits.");
 
@@ -113,6 +138,8 @@ export const hqRecordDataSchema = z.object({
   notes: z.string().max(10000).default(""),
   decisionStatus: z.enum(HQ_DECISION_STATUSES).default("none"),
   taskState: z.enum(HQ_TASK_STATES).default("open"),
+  williamEdits: z.array(williamEditSchema).max(MAX_WILLIAM_EDITS).optional(),
+  williamVerdict: williamVerdictSchema.optional(),
 }).passthrough();
 
 export type HqRecordData = z.infer<typeof hqRecordDataSchema>;
@@ -158,13 +185,28 @@ export class HqValidationError extends Error {
 
 export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown, now = new Date().toISOString()): HqRecordData {
   const changes = hqChangesSchema.parse(untrustedChanges);
-  const { observation, takeover, ...planning } = changes;
+  const { observation, takeover, teach, forgetEdit, verdict, ...planning } = changes;
   if (observation && (current.evidence?.length ?? 0) >= 200) {
     throw new HqValidationError("Evidence history is full. Preserve the record and review storage before adding another observation.");
   }
   const next = hqRecordDataSchema.parse({ ...current, ...planning,
     ...(observation ? { ...observation.fields, verifiedAt: observation.source.observedAt, evidence: [...(current.evidence ?? []), observation.source] } : {}),
   });
+  if (teach || forgetEdit) {
+    let edits = (current.williamEdits ?? []).filter((edit) => edit.id !== forgetEdit);
+    if (teach && teach.before.trim() !== teach.after.trim()) {
+      const { why, ...rest } = teach;
+      edits = [...edits, { id: `${now}:${teach.kind}`, at: now, ...rest, ...(why ? { why } : {}) }].slice(-MAX_WILLIAM_EDITS);
+    }
+    next.williamEdits = edits;
+  }
+  if (verdict) {
+    if (current.decisionStatus !== "ready") throw new HqValidationError("Only a ready decision can be approved or declined.");
+    const draftText = draftFromNotes(next.notes);
+    next.williamVerdict = { verdict: verdict.verdict, at: now, decisionReason: current.decisionReason ?? "", ...(draftText ? { draft: draftText } : {}), ...(verdict.note ? { note: verdict.note } : {}) };
+    next.decisionStatus = "none";
+    next.waitingOn = "haus";
+  }
   if (takeover === "claim" && !current.humanTakeover) {
     next.humanTakeover = true;
     next.humanTakeoverAt = now;
@@ -188,6 +230,17 @@ export function applyHqChanges(current: HqRecordData, untrustedChanges: unknown,
     throw new HqValidationError("This creator is marked do not contact. Review consent evidence before restoring the card.");
   }
   return next;
+}
+
+// Prepared replies live at the top of working notes, ahead of any research.
+const DRAFT_PREFIX = "DRAFT, NOT SENT";
+export function draftFromNotes(notes: string) {
+  return notes.startsWith(DRAFT_PREFIX) ? notes.replace(/\r\n/g, "\n").slice(DRAFT_PREFIX.length).split("\n\nRESEARCH")[0].replace(/^:\s*/, "").trim() : "";
+}
+export function notesWithDraft(notes: string, draft: string) {
+  const normalized = notes.replace(/\r\n/g, "\n");
+  const rest = normalized.startsWith(DRAFT_PREFIX) ? normalized.slice(normalized.indexOf("\n\nRESEARCH") >= 0 ? normalized.indexOf("\n\nRESEARCH") : normalized.length) : normalized ? (normalized.startsWith("RESEARCH") ? "\n\n" : "\n\nRESEARCH\n") + normalized : "";
+  return `${DRAFT_PREFIX}: ${draft.trim()}${rest}`;
 }
 
 export function isSameOriginMutation(request: Request): boolean {
