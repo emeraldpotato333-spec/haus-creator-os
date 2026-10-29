@@ -1,14 +1,15 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, BookOpen, Check, ChevronLeft, Columns3, GraduationCap, Hand, LayoutGrid, Pencil, RefreshCw, Search, Settings2, Store, Undo2, Users, X } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Check, ChevronLeft, ChevronRight, Columns3, Ellipsis, GraduationCap, Hand, LayoutGrid, Pencil, RefreshCw, Search, Settings2, Store, Undo2, Users, X } from 'lucide-react';
 import { draftFromNotes, notesWithDraft, type HqChanges, type HqRecordEnvelope } from '@/lib/hq-validation';
 import { Face, ago, ask, daysFromToday, due, firstName } from './parts';
+import { PlaybookView, SettingsView } from './reference-views';
 
-type View = 'today' | 'others' | 'learned';
+type View = 'today' | 'people' | 'pipeline' | 'others' | 'learned' | 'playbook' | 'settings' | 'more';
 type Mode = { kind: 'view' } | { kind: 'edit'; field: 'nextAction' | 'draft'; text: string; why: string } | { kind: 'decline'; note: string };
 type Group = { key: string; title: string; people: HqRecordEnvelope[] };
 
-const stages = [['contacted', 'Contacted'], ['conversation', 'Talking'], ['scoping', 'Project & samples'], ['agreement', 'Agreement'], ['delivery', 'Delivery'], ['content', 'Content'], ['complete', 'Complete']] as const;
+const stages = [['contacted', 'Contacted'], ['conversation', 'Talking'], ['scoping', 'Samples'], ['agreement', 'Agreement'], ['delivery', 'Delivery'], ['content', 'Content'], ['complete', 'Complete']] as const;
 const waitingLabel: Record<string, string> = { haus: 'HAUS', creator: 'Their reply', william: 'You', none: 'Nobody' };
 const nonCreator = (r: HqRecordEnvelope) => ['customer', 'trade', 'other'].includes(r.data.relationshipType);
 const byDue = (a: HqRecordEnvelope, b: HqRecordEnvelope) => (a.data.dueDate ?? '9999').localeCompare(b.data.dueDate ?? '9999');
@@ -93,9 +94,9 @@ function FaceRow({ people, onPick, max = 14 }: { people: HqRecordEnvelope[]; onP
   );
 }
 
-function Workspace({ r, mode, setMode, saving, stale, onSave, onClose }: {
+function Workspace({ r, mode, setMode, saving, stale, onSave, onClose, backLabel }: {
   r: HqRecordEnvelope; mode: Mode; setMode: (m: Mode) => void; saving: boolean; stale: boolean;
-  onSave: (changes: HqChanges, done?: string) => Promise<boolean>; onClose: () => void;
+  onSave: (changes: HqChanges, done?: string) => Promise<boolean>; onClose: () => void; backLabel: string;
 }) {
   const d = r.data;
   const draft = draftFromNotes(d.notes);
@@ -118,14 +119,15 @@ function Workspace({ r, mode, setMode, saving, stale, onSave, onClose }: {
   return (
     <article className="dk-work" aria-label={d.name}>
       <header className="dk-work-head">
-        <button className="dk-back" onClick={onClose}><ChevronLeft size={20} />Today</button>
+        <button className="dk-back" onClick={onClose}><ChevronLeft size={20} />{backLabel}</button>
+        <button className="dk-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         <Face r={r} size={64} />
         <div className="dk-work-id">
           <h2>{d.name}</h2>
           <p>{d.handle}</p>
         </div>
         <div className="dk-work-links">
-          {(d.channels ?? []).slice(0, 2).map((c) => <a key={c.url} className="dk-link" href={c.url} target="_blank" rel="noreferrer">{c.label}<ArrowUpRight size={15} /></a>)}
+          {(d.channels ?? []).slice(0, 3).map((c) => <a key={c.url} className="dk-link" href={c.url} target="_blank" rel="noreferrer">{c.platform === 'Other' ? c.label : c.platform}<ArrowUpRight size={15} /></a>)}
         </div>
       </header>
 
@@ -133,7 +135,11 @@ function Workspace({ r, mode, setMode, saving, stale, onSave, onClose }: {
         <div><dt>Owner</dt><dd>{d.humanTakeover ? 'You' : d.owner}</dd></div>
         <div><dt>Waiting on</dt><dd>{waitingLabel[d.waitingOn]}</dd></div>
         <div><dt>Review</dt><dd className={due(d.dueDate).late ? 'is-late' : ''}>{due(d.dueDate).text}</dd></div>
-        <div><dt>Stage</dt><dd>{stages.find(([id]) => id === d.stage)?.[1] ?? 'Archived'}</dd></div>
+        <div><dt>Stage</dt><dd>{d.stage === 'archived' ? 'Archived' : (
+          <select className="dk-stage" value={d.stage} disabled={saving || stale} aria-label="Stage" onChange={(e) => void onSave({ stage: e.target.value as HqChanges['stage'] }, 'Stage updated')}>
+            {stages.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        )}</dd></div>
       </dl>
 
       {stale && <p className="dk-alert">This record changed elsewhere. Refresh before editing</p>}
@@ -216,8 +222,76 @@ function Workspace({ r, mode, setMode, saving, stale, onSave, onClose }: {
           {edits.slice(0, 3).map((e) => <p key={e.id} className="dk-lesson">{e.why || ask(e.after, 100)} <span>{ago(e.at)}</span></p>)}
         </section>
       )}
-      <a className="dk-full" href={'/headquarters?creator=' + encodeURIComponent(r.id)}>Full record and source history<ArrowUpRight size={15} /></a>
+      {(d.evidence?.length ?? 0) > 0 && (
+        <details className="dk-more-info">
+          <summary>Source history <span className="td-count">{d.evidence!.length}</span></summary>
+          {[...d.evidence!].reverse().map((e, i) => (
+            <div key={e.id ?? i} className="dk-source">
+              <p><strong>{e.label}</strong> <span>{String(e.observedAt).slice(0, 10)}</span></p>
+              <p>{e.note}</p>
+              {e.url && <a className="dk-text-button" href={e.url} target="_blank" rel="noreferrer">Open source<ArrowUpRight size={14} /></a>}
+            </div>
+          ))}
+        </details>
+      )}
+      {d.notes && !draft && (
+        <details className="dk-more-info">
+          <summary>Working notes</summary>
+          <p className="dk-notes">{d.notes}</p>
+        </details>
+      )}
     </article>
+  );
+}
+
+const peopleFilters = [
+  { id: 'active', label: 'Active' },
+  { id: 'waiting', label: 'Waiting on them' },
+  { id: 'held', label: 'You’re handling' },
+  { id: 'recheck', label: 'Needs a recheck' },
+  { id: 'research', label: 'Research' },
+  { id: 'archived', label: 'Archived' },
+] as const;
+type PeopleFilter = (typeof peopleFilters)[number]['id'];
+
+function peopleFor(records: HqRecordEnvelope[], filter: PeopleFilter, text: string) {
+  const live = (r: HqRecordEnvelope) => r.data.stage !== 'archived' && r.data.queueCategory !== 'research';
+  const match: Record<PeopleFilter, (r: HqRecordEnvelope) => boolean> = {
+    active: (r) => live(r) && !nonCreator(r) && !r.data.needsReconciliation,
+    waiting: (r) => live(r) && !nonCreator(r) && r.data.waitingOn === 'creator',
+    held: (r) => live(r) && r.data.humanTakeover,
+    recheck: (r) => live(r) && r.data.needsReconciliation,
+    research: (r) => r.data.queueCategory === 'research',
+    archived: (r) => r.data.stage === 'archived' && r.data.queueCategory !== 'research',
+  };
+  const q = text.trim().toLowerCase();
+  return records
+    .filter((r) => match[filter](r) && (!q || `${r.data.name} ${r.data.handle} ${r.data.project ?? ''}`.toLowerCase().includes(q)))
+    .sort((a, b) => a.data.queuePriority - b.data.queuePriority || (b.data.warmth ?? 0) - (a.data.warmth ?? 0) || a.data.name.localeCompare(b.data.name));
+}
+
+function PipelineBoard({ records, selectedId, onPick }: { records: HqRecordEnvelope[]; selectedId?: string; onPick: (r: HqRecordEnvelope) => void }) {
+  const creators = records.filter((r) => r.data.stage !== 'archived' && r.data.queueCategory !== 'research' && r.data.relationshipType === 'creator');
+  return (
+    <div className="dk-board">
+      {stages.map(([id, label]) => {
+        const people = creators.filter((r) => r.data.stage === id).sort(byDue);
+        return (
+          <section key={id} className={'dk-column' + (id === 'content' || id === 'complete' ? ' is-goal' : '')}>
+            <header><h3>{label}</h3><span className="td-count">{people.length}</span></header>
+            <div className="dk-column-cards">
+              {people.map((r) => (
+                <button key={r.id} className={'dk-mini' + (selectedId === r.id ? ' is-selected' : '')} onClick={() => onPick(r)}>
+                  <Face r={r} size={32} />
+                  <span><strong>{r.data.name}</strong><span className={due(r.data.dueDate).late ? 'is-late' : ''}>{r.data.waitingOn === 'creator' ? 'Their turn' : due(r.data.dueDate).text}</span></span>
+                </button>
+              ))}
+              {!people.length && <p className="dk-none">No one here yet</p>}
+            </div>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
@@ -232,17 +306,20 @@ export function CommandDesk() {
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [query, setQuery] = useState('');
   const [stale, setStale] = useState(false);
+  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>('active');
+  const [peopleText, setPeopleText] = useState('');
   const busy = useRef(false);
   const l: Lists = useMemo(() => deskLists(records), [records]);
+  const people = useMemo(() => peopleFor(records, peopleFilter, peopleText), [records, peopleFilter, peopleText]);
 
-  const fallback = view === 'others' ? l.others[0] : l.ready[0] ?? l.yours[0] ?? null;
+  const hasPane = view === 'today' || view === 'people' || view === 'others' || view === 'pipeline';
+  const fallback = view === 'others' ? l.others[0] : view === 'people' ? people[0] : view === 'today' ? l.ready[0] ?? l.yours[0] : undefined;
   const selected = records.find((r) => r.id === selectedId) ?? fallback ?? null;
 
   const pick = (r: HqRecordEnvelope) => {
     if (busy.current) return;
     setSelectedId(r.id); setMode({ kind: 'view' }); setStale(false); setSheet(true); setQuery(''); setMessage(null);
-    if (nonCreator(r)) setView('others');
-    else if (view !== 'today') setView('today');
+    if (!hasPane) setView('people');
   };
 
   async function save(changes: HqChanges, done = 'Saved') {
@@ -261,6 +338,7 @@ export function CommandDesk() {
       }
       if (!response.ok) throw new Error(body.error || 'That didn’t save. Nothing was changed');
       setRecords((all) => all.map((x) => (x.id === selected.id ? body.record : x)));
+      setSelectedId(selected.id);
       setMessage({ tone: 'ok', text: done });
       return true;
     } catch (e) {
@@ -272,7 +350,6 @@ export function CommandDesk() {
   }
 
   const forget = async (r: HqRecordEnvelope, id: string) => {
-    setSelectedId(r.id);
     const response = await fetch('/api/headquarters/' + encodeURIComponent(r.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: r.version, mutationId: crypto.randomUUID(), changes: { forgetEdit: id } }) });
     const body = await response.json();
     if (response.ok) setRecords((all) => all.map((x) => (x.id === r.id ? body.record : x)));
@@ -285,39 +362,53 @@ export function CommandDesk() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const found = query.trim().length > 1 ? records.filter((r) => r.data.queueCategory !== 'research' && `${r.data.name} ${r.data.handle}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : [];
+  const found = query.trim().length > 1 ? records.filter((r) => `${r.data.name} ${r.data.handle}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : [];
   const yourCount = l.ready.length + l.yours.length;
-  const go = (v: View) => { setView(v); setSelectedId(null); setFocusGroup(null); setMode({ kind: 'view' }); setSheet(false); };
-  const nav = [
-    { label: 'Today', icon: LayoutGrid, onClick: () => go('today'), current: view === 'today', count: yourCount },
-    { label: 'People', icon: Users, href: '/headquarters?view=people' },
-    { label: 'Pipeline', icon: Columns3, href: '/headquarters?view=pipeline' },
-    { label: 'Customers', icon: Store, onClick: () => go('others'), current: view === 'others', count: l.others.length, quiet: true },
-    { label: 'Learned', icon: GraduationCap, onClick: () => go('learned'), current: view === 'learned' },
-    { label: 'Playbook', icon: BookOpen, href: '/headquarters?view=playbook', desk: true },
-    { label: 'Settings', icon: Settings2, href: '/headquarters?view=settings', desk: true },
+  const go = (v: View, filter?: PeopleFilter) => { setView(v); setSelectedId(null); setFocusGroup(null); setMode({ kind: 'view' }); setSheet(false); if (filter) setPeopleFilter(filter); window.scrollTo({ top: 0 }); };
+  const nav: { id: View; label: string; icon: typeof Users; count?: number; quiet?: boolean; where: 'both' | 'desk' | 'phone' }[] = [
+    { id: 'today', label: 'Today', icon: LayoutGrid, count: yourCount, where: 'both' },
+    { id: 'people', label: 'People', icon: Users, where: 'both' },
+    { id: 'pipeline', label: 'Pipeline', icon: Columns3, where: 'both' },
+    { id: 'others', label: 'Customers', icon: Store, count: l.others.length, quiet: true, where: 'both' },
+    { id: 'learned', label: 'Learned', icon: GraduationCap, where: 'desk' },
+    { id: 'playbook', label: 'Playbook', icon: BookOpen, where: 'desk' },
+    { id: 'settings', label: 'Settings', icon: Settings2, where: 'desk' },
+    { id: 'more', label: 'More', icon: Ellipsis, where: 'phone' },
   ];
+  const titles: Record<View, string> = {
+    today: yourCount === 0 ? 'You’re clear, William' : yourCount === 1 ? 'One person needs you, William' : `${yourCount} people need you, William`,
+    people: 'People', pipeline: 'Pipeline', others: 'Customers and trade', learned: 'What agents learned from you', playbook: 'Playbook', settings: 'Settings', more: 'More',
+  };
   const date = new Date().toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long', month: 'long', day: 'numeric' });
-  const headline = view === 'others' ? 'Customers and trade' : view === 'learned' ? 'What agents learned from you' : yourCount === 0 ? 'You’re clear, William' : yourCount === 1 ? 'One person needs you, William' : `${yourCount} people need you, William`;
+  const backLabel = titles[view].startsWith('One') || view === 'today' ? 'Today' : titles[view];
 
   const queueGroups: Group[] = focusGroup ? [focusGroup] : view === 'others' ? [{ key: 'others', title: 'Active conversations', people: l.others }] : [
     { key: 'ready', title: 'Decisions', people: l.ready },
     { key: 'yours', title: 'Your turn', people: l.yours },
   ];
 
+  const pane = (
+    <div className={'dk-pane' + (sheet ? ' is-open' : '') + (view === 'pipeline' ? ' is-drawer' : '')}>
+      {selected ? <Workspace key={selected.id} r={selected} mode={mode} setMode={setMode} saving={saving} stale={stale} onSave={save} onClose={() => { setSheet(false); if (view === 'pipeline') setSelectedId(null); }} backLabel={backLabel} />
+        : <div className="dk-work dk-empty-pane"><h2>{view === 'people' ? 'No one matches' : 'You’re all caught up'}</h2><p>Pick anyone to see where things stand</p></div>}
+    </div>
+  );
+
   return (
     <div className="td dk">
       <aside className="td-rail">
-        <a className="td-brand" href="/headquarters/desk">
+        <button className="td-brand" onClick={() => go('today')}>
           <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="2" width="11" height="11" rx="3" /><rect x="15" y="2" width="11" height="11" rx="3" opacity=".45" /><rect x="2" y="15" width="11" height="11" rx="3" opacity=".45" /><rect x="15" y="15" width="11" height="11" rx="3" /></svg>
           <span>Creator HQ</span>
-        </a>
+        </button>
         <nav aria-label="Headquarters">
-          {nav.map(({ label, icon: Icon, href, onClick, current, count, quiet, desk }) => {
-            const inner = <><Icon size={20} /><span>{label}</span>{Boolean(count) && <span className={'td-nav-count' + (quiet ? ' is-quiet' : '')}>{count}</span>}</>;
-            return href
-              ? <a key={label} href={href} className={desk ? 'dk-desk-only' : undefined}>{inner}</a>
-              : <button key={label} onClick={onClick} aria-current={current ? 'page' : undefined}>{inner}</button>;
+          {nav.map(({ id, label, icon: Icon, count, quiet, where }) => {
+            const current = view === id || (id === 'more' && ['learned', 'playbook', 'settings'].includes(view));
+            return (
+              <button key={id} onClick={() => go(id)} aria-current={current ? 'page' : undefined} className={where === 'desk' ? 'dk-desk-only' : where === 'phone' ? 'dk-phone-only' : undefined}>
+                <Icon size={20} /><span>{label}</span>{Boolean(count) && <span className={'td-nav-count' + (quiet ? ' is-quiet' : '')}>{count}</span>}
+              </button>
+            );
           })}
         </nav>
       </aside>
@@ -325,8 +416,8 @@ export function CommandDesk() {
       <main className="td-main dk-main">
         <header className="dk-head">
           <div>
-            <p className="td-meta">{date}</p>
-            <h1>{state === 'ready' || records.length ? headline : 'Today'}</h1>
+            {view === 'today' && <p className="td-meta">{date}</p>}
+            <h1>{records.length ? titles[view] : 'Today'}</h1>
           </div>
           <div className="dk-search">
             <Search size={18} />
@@ -351,28 +442,14 @@ export function CommandDesk() {
               <button key={g.key} className={'dk-slip-card' + (focusGroup?.key === g.key ? ' is-active' : '')} onClick={() => { setFocusGroup(focusGroup?.key === g.key ? null : g); pick(g.people[0]); }}>
                 <strong>{g.people.length}</strong>
                 <span>{g.title}</span>
-                <span className="dk-slip-faces">{g.people.slice(0, 3).map((r) => <Face key={r.id} r={r} size={24} />)}</span>
+                <span className="dk-slip-faces">{g.people.slice(0, 4).map((r) => <Face key={r.id} r={r} size={28} />)}</span>
               </button>
             )) : <p><Check size={18} />Nothing is slipping. Every conversation has an owner and a date</p>}
           </section>
         )}
 
-        {records.length > 0 && view === 'learned' && (
-          <section className="dk-learned">
-            <p className="dk-lead">Each time you edit a reply or a next step, the change is saved here. Agents read these before writing, so remove anything you don’t want repeated.</p>
-            {l.learned.length ? l.learned.map(({ r, edit }) => (
-              <article key={r.id + edit.id} className="dk-lesson-card">
-                <button className="dk-lesson-who" onClick={() => pick(r)}><Face r={r} size={36} /><strong>{r.data.name}</strong><span>{edit.kind === 'draft' ? 'Reply' : edit.kind === 'nextAction' ? 'Next step' : 'Decision'} edited {ago(edit.at)}</span></button>
-                {edit.why && <p className="dk-lesson-why">{edit.why}</p>}
-                <div className="dk-diff"><p className="is-before">{edit.before}</p><p>{edit.after}</p></div>
-                <button className="dk-text-button" onClick={() => void forget(r, edit.id)}><X size={15} />Forget this</button>
-              </article>
-            )) : <p className="td-empty">Nothing yet. Edit a prepared reply or next step and it shows up here</p>}
-          </section>
-        )}
-
-        {records.length > 0 && view !== 'learned' && (
-          <div className="dk-desk">
+        {records.length > 0 && (view === 'today' || view === 'others') && (
+          <div className="dk-desk is-queue">
             <div className="dk-queue">
               {queueGroups.map((g) => (
                 <section key={g.key}>
@@ -385,43 +462,87 @@ export function CommandDesk() {
                 </section>
               ))}
               {view === 'today' && !focusGroup && l.backlog.length > 0 && (
-                <a className="td-backlog" href="/headquarters?view=people&show=reconciliation"><span><strong>{l.backlog.length} older threads</strong> need a source check</span><ArrowUpRight size={16} /></a>
+                <button className="td-backlog" onClick={() => go('people', 'recheck')}><span><strong>{l.backlog.length} older threads</strong> need a source check</span><ChevronRight size={18} /></button>
               )}
               {view === 'today' && !focusGroup && (
-              <section className="dk-panel">
-              <header className="td-section"><h3>Agents</h3></header>
-              <div className="dk-stats">
-                <div><strong>{l.activity.checks}</strong><span>source checks {l.activity.lastDay ? 'on ' + new Date(l.activity.lastDay + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}, across {l.activity.people} people</span></div>
-                <div><strong>{l.activity.preparing}</strong><span>decisions being prepared for you</span></div>
-                <div className="is-sample"><strong>3 of 5</strong><span>new first contacts today</span><em>Sample until agents log runs here</em></div>
-              </div>
-              <h4>Working on</h4>
-              <FaceRow people={l.agents} onPick={pick} />
-              <h4>Waiting on their reply</h4>
-              <FaceRow people={l.waiting} onPick={pick} />
-            </section>
+                <section className="dk-panel">
+                  <header className="td-section"><h3>Agents</h3></header>
+                  <div className="dk-stats">
+                    <div><strong>{l.activity.checks}</strong><span>source checks {l.activity.lastDay ? 'on ' + new Date(l.activity.lastDay + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}, across {l.activity.people} people</span></div>
+                    <div><strong>{l.activity.preparing}</strong><span>decisions being prepared for you</span></div>
+                    <div className="is-sample"><strong>3 of 5</strong><span>new first contacts today</span><em>Sample until agents log runs here</em></div>
+                  </div>
+                  <h4>Working on</h4>
+                  <FaceRow people={l.agents} onPick={pick} />
+                  <h4>Waiting on their reply</h4>
+                  <FaceRow people={l.waiting} onPick={pick} />
+                </section>
               )}
             </div>
-            <div className={'dk-pane' + (sheet ? ' is-open' : '')}>
-              {selected ? <Workspace key={selected.id} r={selected} mode={mode} setMode={setMode} saving={saving} stale={stale} onSave={save} onClose={() => setSheet(false)} />
-                : <div className="dk-work dk-empty-pane"><h2>You’re all caught up</h2><p>Pick anyone below to see where things stand</p></div>}
-            </div>
+            {pane}
           </div>
         )}
 
         {records.length > 0 && view === 'today' && (
-          <div className="dk-lower">
-            <section className="dk-panel">
-              <header className="td-section"><h3>Is outreach working</h3><a className="dk-text-button" href="/headquarters?view=pipeline">Pipeline<ArrowUpRight size={15} /></a></header>
-              <div className="dk-pipe">
-                {l.pipeline.map((s) => (
-                  <a key={s.id} href="/headquarters?view=pipeline" className={'dk-pipe-step' + (s.id === 'content' || s.id === 'complete' ? ' is-goal' : '')}>
-                    <strong>{s.count}</strong><span>{s.label}</span>
-                  </a>
-                ))}
+          <section className="dk-panel dk-lower">
+            <header className="td-section"><h3>Is outreach working</h3><button className="dk-text-button" onClick={() => go('pipeline')}>Open pipeline<ChevronRight size={16} /></button></header>
+            <div className="dk-pipe">
+              {l.pipeline.map((s) => (
+                <button key={s.id} onClick={() => go('pipeline')} className={'dk-pipe-step' + (s.id === 'content' || s.id === 'complete' ? ' is-goal' : '')}>
+                  <strong>{s.count}</strong><span>{s.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="dk-fine">Creator relationships by stage. Content and Complete are the goal</p>
+          </section>
+        )}
+
+        {records.length > 0 && view === 'people' && (
+          <div className="dk-desk">
+            <div className="dk-queue">
+              <div className="dk-chips" role="tablist" aria-label="Show">
+                {peopleFilters.map((f) => <button key={f.id} role="tab" aria-selected={peopleFilter === f.id} onClick={() => { setPeopleFilter(f.id); setSelectedId(null); }}>{f.label}</button>)}
               </div>
-              <p className="dk-fine">Creator relationships by stage. Content and Complete are the goal</p>
-            </section>
+              <label className="dk-search dk-filter"><Search size={16} /><input value={peopleText} onChange={(e) => setPeopleText(e.target.value)} placeholder="Filter by name or project" /></label>
+              <section>
+                <header className="td-section"><h3>{peopleFilters.find((f) => f.id === peopleFilter)?.label}</h3><span className="td-count">{people.length}</span></header>
+                {people.length ? <div className="dk-list">{people.map((r) => <QueueRow key={r.id} r={r} selected={selected?.id === r.id} onPick={pick} showDue={peopleFilter !== 'archived' && peopleFilter !== 'research'} />)}</div> : <p className="dk-none">No one here</p>}
+              </section>
+            </div>
+            {pane}
+          </div>
+        )}
+
+        {records.length > 0 && view === 'pipeline' && (
+          <>
+            <p className="dk-lead">Creator relationships by stage. Open anyone to move them; moving a card never sends a message or confirms an agreement.</p>
+            <PipelineBoard records={records} selectedId={sheet ? selected?.id : undefined} onPick={pick} />
+            {sheet && selected && <button className="dk-scrim" aria-label="Close" onClick={() => { setSheet(false); setSelectedId(null); }} />}
+            {pane}
+          </>
+        )}
+
+        {records.length > 0 && view === 'learned' && (
+          <section className="dk-learned">
+            <p className="dk-lead">Each time you edit a reply or a next step, the change is saved here. Agents read these before writing, so remove anything you don’t want repeated.</p>
+            {l.learned.length ? l.learned.map(({ r, edit }) => (
+              <article key={r.id + edit.id} className="dk-lesson-card">
+                <button className="dk-lesson-who" onClick={() => pick(r)}><Face r={r} size={36} /><strong>{r.data.name}</strong><span>{edit.kind === 'draft' ? 'Reply' : edit.kind === 'nextAction' ? 'Next step' : 'Decision'} edited {ago(edit.at)}</span></button>
+                {edit.why && <p className="dk-lesson-why">{edit.why}</p>}
+                <div className="dk-diff"><p className="is-before">{edit.before}</p><p>{edit.after}</p></div>
+                <button className="dk-text-button" onClick={() => void forget(r, edit.id)}><X size={15} />Forget this</button>
+              </article>
+            )) : <p className="dk-none">Nothing yet. Edit a prepared reply or next step and it shows up here</p>}
+          </section>
+        )}
+
+        {records.length > 0 && view === 'playbook' && <PlaybookView />}
+        {records.length > 0 && view === 'settings' && <SettingsView records={records} onChanged={load} />}
+        {view === 'more' && (
+          <div className="dk-list dk-more-list">
+            {([['learned', 'Learned', GraduationCap], ['playbook', 'Playbook', BookOpen], ['settings', 'Settings', Settings2]] as const).map(([id, label, Icon]) => (
+              <button key={id} className="dk-row" onClick={() => go(id)}><Icon size={20} /><span className="dk-row-text"><strong>{label}</strong></span><ChevronRight size={18} /></button>
+            ))}
           </div>
         )}
       </main>
